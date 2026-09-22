@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Sete arquivos de modelo, nove de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Nove arquivos de modelo, onze de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -226,6 +226,75 @@ calendário. Num funil real frequentemente não é — registros são arquivados
 *porque* são lentos, que é a única coisa que quebra este estimador e não pode ser detectada de dentro
 dele.
 
+## E a única premissa que o estimador faz, quebrada de propósito
+
+A onda 3 terminou numa ressalva: o estimador produto-limite exige censura independente de quando o sujeito
+teria convertido, e um funil real quebra isso primeiro. Quebrar exige dois passos, e o primeiro é um achado
+por si só.
+
+**Um atraso exponencial não pode ser quebrado por arquivamento, e é por isso que a exponencial teve de
+sair.** Sob uma exponencial, um sujeito aberto há vinte dias tem exatamente a mesma chance de converter
+amanhã que um aberto hoje de manhã, então remover uma parcela dos lentos não remove nada de que o
+estimador precisava: os sobreviventes têm o mesmo futuro que os retirados. Uma primeira tentativa desta
+onda arquivou todo registro parado com uma única probabilidade e não produziu viés algum — corretamente,
+porque uma taxa de censura que depende só do tempo decorrido é exatamente o que o método permite.
+
+Então o `sql/70_frailty.sql` divide a conta em duas classes declaradas — **30% lentos a 2,5× o atraso, 70%
+rápidos a 0,357143×** — calibradas para que o multiplicador médio seja **exatamente 1**. O funil é, na
+média, tão rápido quanto era nas ondas 1 a 3; só a dispersão muda. O estimador continua certo: conferido
+contra a forma fechada da mistura de duas exponenciais, o maior desvio é de **1,38** erro padrão.
+
+**Mas a dispersão sozinha faz a velocidade medida parecer maior, com a média verdadeira parada.**
+
+| Funil | Uma exponencial | Duas classes | razão |
+| --- | --- | --- | --- |
+| `retencao` | 17,2008 d | **14,5152 d** | **0,8439** |
+| `resgate` | 9,7738 d | 8,8153 d | 0,9019 |
+| `venda` | 1,9540 d | 1,8483 d | 0,9459 |
+| `atendimento` | 0,2006 d | 0,2016 d | 1,0047 |
+
+A heterogeneidade empurra mais da classe lenta para além do horizonte onde ninguém a vê, então a leitura
+ingênua de tempo da onda 2 perde outros **15,6%** no `retencao` sem mudança alguma na velocidade média. A
+onda 2 assumiu uma exponencial e portanto **subestimou o próprio achado**.
+
+**Depois a revisão quebra o estimador, porque revisão é julgamento e não cronômetro.** Alguém abre o
+registro, pergunta ao responsável pela conta, e fecha os que estão de fato mortos — e esse julgamento
+correlaciona com a classe, que é o que os tornou lentos. Na janela declarada de 21 dias a revisão fecha
+**9.541** registros, dos quais **75,55%** são da classe lenta contra **29,87%** da população: ela é
+**2,529 vezes** mais propensa a fechar um registro lento. Nada nos dados registra a classe, e é por isso
+que nada disso é visível de dentro: o analista vê uma censura e não consegue distingui-la do calendário.
+
+| Janela da revisão | `retencao` (classe lenta 50 d) | `venda` (classe lenta 5 d) |
+| --- | --- | --- |
+| 3 dias | **1,0450** | **0,9372** |
+| 7 dias | 1,0276 | 0,9700 |
+| 14 dias | 1,0036 | 0,9932 |
+| 21 dias | 1,0082 | 0,9986 |
+| **30 dias** | **1,0000** | **1,0000** |
+| 60 dias | 1,0000 | 1,0000 |
+
+Duas coisas nessa tabela, e a segunda é a útil.
+
+**O viés não tem sinal.** O `retencao` lê alto e o `venda` lê baixo, da mesma revisão, na mesma janela.
+Dois efeitos brigam: arquivar esconde conversões que teriam ocorrido, o que empurra a estimativa para
+*baixo*; e remove cedo do conjunto de risco sujeitos que nunca iriam converter, o que empurra o hazard
+estimado para *cima*. Qual vence depende da taxa de passagem e do atraso da classe lenta contra a janela —
+dois parâmetros, não um. Na varredura a razão vai de **0,9372 a 1,0450**, sete pontos acima de um e vinte e
+três abaixo, e o `resgate` troca de sinal *dentro* da própria varredura. Nem a magnitude é monótona: o
+`retencao` lê 1,0036 em quatorze dias e volta a 1,0082 em vinte e um.
+
+**E existe uma condição exata em que isso não pode acontecer.** Todos os dezoito pontos da varredura cuja
+janela de revisão está no horizonte reportado ou além dele são não viesados com precisão de máquina —
+porque uma revisão que não remove ninguém antes do dia 30 não pode tocar uma estimativa feita no dia 30.
+Dentro do horizonte, só seis de trinta e seis pontos são. Então a regra é nítida e barata de conferir:
+
+> **Uma revisão de pipeline cuja janela é mais curta que o horizonte que você reporta contamina o
+> relatório. Uma no horizonte ou além dele não pode.**
+
+É toda a prescrição, e ela não precisa de estatística para ser aplicada — só que alguém compare dois
+números que hoje moram em documentos diferentes: quanto tempo um registro fica parado antes de a revisão
+fechá-lo, e quantos dias o relatório de conversão cobre.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -260,7 +329,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | As duas leituras de taxa derivadas no papel, e os dois mecanismos isolados. |
 | [`sql/50_velocity.sql`](sql/50_velocity.sql) | As quatro leituras de novo na dimensão do tempo, suas formas fechadas, e o ranking de velocidade. |
 | [`sql/60_survival.sql`](sql/60_survival.sql) | O estimador produto-limite, suas três formas fechadas, a precisão que ele compra e a mediana que geralmente não existe. |
-| [`tests/`](tests) | Nove arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/70_frailty.sql`](sql/70_frailty.sql) | Duas classes declaradas de sujeito com atraso médio inalterado, e a forma fechada da mistura. |
+| [`sql/80_archiving.sql`](sql/80_archiving.sql) | A revisão de pipeline que censura por julgamento, o que ela custa à estimativa, e a janela em que não pode. |
+| [`tests/`](tests) | Onze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -279,7 +350,7 @@ avaliadas.
 atraso é varrido com as entradas estáveis. Cada um isola um mecanismo, e cada um é afirmado como
 propriedade monótona em vez de cifra.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Cinco até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Sete até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

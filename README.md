@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Seven model files, nine assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Nine model files, eleven assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -223,6 +223,76 @@ calendar. In a real funnel it frequently is not — records get archived, slow c
 pipeline review closes what looks stale — and every one of those censors the slow subjects *because* they
 are slow, which is the one thing that breaks this estimator and cannot be detected from inside it.
 
+## And the one assumption the estimator does make, broken on purpose
+
+Wave 3 ended on a caveat: the product-limit estimator needs censoring to be unrelated to when a subject
+would have converted, and a real funnel breaks that first. Breaking it turns out to require two steps,
+and the first one is a finding on its own.
+
+**An exponential delay cannot be broken by archiving, and that is why the exponential had to go.** Under
+one exponential a subject open for twenty days is exactly as likely to convert tomorrow as one that opened
+this morning, so removing a share of the slow ones removes nothing the estimator needed: the survivors
+have the same future as the departed. A first attempt at this wave archived every stale record with one
+probability and produced no bias at all — correctly, because a censoring rate that depends only on elapsed
+time is exactly what the method allows.
+
+So `sql/70_frailty.sql` splits the account into two declared classes — **30% slow at 2.5× the delay, 70%
+fast at 0.357143×** — calibrated so the mean multiplier is **exactly 1**. The funnel is as fast on average
+as it was in waves 1 to 3; only the spread changes. The estimator is still right: checked against the
+two-exponential mixture's closed form, the largest deviation is **1.38** standard errors.
+
+**But the spread alone makes the measured speed faster, at a true mean that has not moved.**
+
+| Funnel | One exponential | Two classes | ratio |
+| --- | --- | --- | --- |
+| `retencao` | 17.2008 d | **14.5152 d** | **0.8439** |
+| `resgate` | 9.7738 d | 8.8153 d | 0.9019 |
+| `venda` | 1.9540 d | 1.8483 d | 0.9459 |
+| `atendimento` | 0.2006 d | 0.2016 d | 1.0047 |
+
+Heterogeneity pushes more of the slow class past the horizon where nobody can see it, so wave 2's naive
+time reading loses another **15.6%** on `retencao` with no change in average speed whatever. Wave 2 assumed
+one exponential and therefore **understated its own finding**.
+
+**Then the review breaks the estimator, because a review is judgement rather than a stopwatch.** Somebody
+opens the record, asks the account manager, and closes the ones that are genuinely dead — and that
+judgement correlates with the class, which is the thing that made them slow. At the declared 21-day window
+the review closes **9,541** records, of which **75.55%** are the slow class against **29.87%** of the
+population: it is **2.529 times** more likely to close a slow record. Nothing in the data records the
+class, which is why none of this is visible from inside: an analyst sees a censoring and cannot tell it
+from the calendar.
+
+| Review window | `retencao` (slow class 50 d) | `venda` (slow class 5 d) |
+| --- | --- | --- |
+| 3 days | **1.0450** | **0.9372** |
+| 7 days | 1.0276 | 0.9700 |
+| 14 days | 1.0036 | 0.9932 |
+| 21 days | 1.0082 | 0.9986 |
+| **30 days** | **1.0000** | **1.0000** |
+| 60 days | 1.0000 | 1.0000 |
+
+Two things in that table, and the second is the useful one.
+
+**The bias has no sign.** `retencao` reads high and `venda` reads low, from the same review, at the same
+window. Two effects fight: archiving hides conversions that would have happened, which pushes the estimate
+*down*; and it removes subjects who were never going to convert from the risk set early, which pushes the
+estimated hazard *up*. Which wins depends on the pass rate and on the slow class's delay against the
+window — two parameters, not one. Across the sweep the ratio runs from **0.9372 to 1.0450**, seven points
+above one and twenty-three below, and `resgate` changes sign *within* its own sweep. Not even the
+magnitude is monotone: `retencao` reads 1.0036 at fourteen days and back up to 1.0082 at twenty-one.
+
+**And there is an exact condition under which it cannot happen at all.** Every one of the eighteen sweep
+points whose review window is at or beyond the reporting horizon is unbiased to machine precision —
+because a review that removes nobody before day 30 cannot touch an estimate made at day 30. Inside the
+horizon only six of thirty-six points are. So the rule is sharp and cheap to check:
+
+> **A pipeline review whose window is shorter than the horizon you report on contaminates the report. One
+> at or beyond it cannot.**
+
+That is the whole prescription, and it needs no statistics to apply — only that somebody compare two
+numbers that currently live in different documents: how long a record sits before the review closes it,
+and how many days the conversion report covers.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -255,7 +325,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | Both rate readings derived on paper, and the two mechanisms isolated. |
 | [`sql/50_velocity.sql`](sql/50_velocity.sql) | The four readings again in the time dimension, their closed forms, and the speed ranking. |
 | [`sql/60_survival.sql`](sql/60_survival.sql) | The product-limit estimator, its three closed forms, the precision it buys and the median that usually does not exist. |
-| [`tests/`](tests) | Nine assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/70_frailty.sql`](sql/70_frailty.sql) | Two declared classes of subject at an unchanged mean delay, and the mixture's closed form. |
+| [`sql/80_archiving.sql`](sql/80_archiving.sql) | The pipeline review that censors by judgement, what it costs the estimate, and the window at which it cannot. |
+| [`tests/`](tests) | Eleven assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -273,7 +345,7 @@ of the draw's own index: no state, no seed, and no dependence on the order rows 
 is swept with arrivals flat. Each isolates one mechanism, and each is asserted as a monotone property
 rather than as a figure.
 
-**And defects are recorded rather than quietly fixed.** Five so far, in
+**And defects are recorded rather than quietly fixed.** Seven so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

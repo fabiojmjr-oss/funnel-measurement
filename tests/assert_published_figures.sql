@@ -124,7 +124,36 @@ WITH expected(what, detail, value) AS (
     ('half_life_days', 'retencao renovado',                   24.2310),
     ('half_life_days', 'resgate abordado',                    13.2570),
     ('half_life_days', 'atendimento triado',                   0.1390),
-    ('half_life_days', 'demanda priorizada',                   3.1830)
+    ('half_life_days', 'demanda priorizada',                   3.1830),
+
+    -- Wave 4: the mixture, and the review that censors by judgement.
+    ('mixture mean multiplier', 'exact',                       1.0000),
+    ('slow class multiplier',   'declared',                    2.5000),
+    ('fast class multiplier',   'declared',                    0.3571),
+    ('realised slow share',     'observed',                    0.2987),
+    ('largest mixture deviation', 'standard errors',            1.3800),
+    ('observed mean, one exponential', 'retencao',            17.2008),
+    ('observed mean, two classes',     'retencao',            14.5152),
+    ('observed mean ratio',            'retencao',              0.8439),
+    ('observed mean ratio',            'resgate',               0.9019),
+    ('observed mean ratio',            'venda',                 0.9459),
+    ('observed mean ratio',            'atendimento',           1.0047),
+    ('records archived',        'at 21 days',               9541.0000),
+    ('share of archived that are slow', 'at 21 days',           0.7555),
+    ('review selectivity',      'slow over population',         2.5290),
+    ('sweep ratio', 'retencao at 3 days',                       1.0450),
+    ('sweep ratio', 'retencao at 7 days',                       1.0276),
+    ('sweep ratio', 'retencao at 14 days',                      1.0036),
+    ('sweep ratio', 'retencao at 21 days',                      1.0082),
+    ('sweep ratio', 'venda at 3 days',                          0.9372),
+    ('sweep ratio', 'venda at 7 days',                          0.9700),
+    ('sweep ratio', 'venda at 21 days',                         0.9986),
+    ('sweep points at or beyond the horizon', 'count',         18.0000),
+    ('unbiased at or beyond the horizon',     'count',         18.0000),
+    ('sweep points inside the horizon',       'count',         36.0000),
+    ('unbiased inside the horizon',           'count',          6.0000),
+    ('sweep points above one inside',         'count',          7.0000),
+    ('sweep points below one inside',         'count',         23.0000)
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -252,6 +281,61 @@ measured(what, detail, value) AS (
         FROM survival_readings WHERE step > 1
     UNION ALL SELECT 'half_life_days', funnel || ' ' || stage, round(half_life_days, 3)
         FROM survival_readings WHERE step > 1
+
+    UNION ALL SELECT 'mixture mean multiplier', 'exact', round(sum(share * multiplier), 4) FROM frailty
+    UNION ALL SELECT 'slow class multiplier', 'declared', round(multiplier, 4) FROM frailty WHERE class = 'slow'
+    UNION ALL SELECT 'fast class multiplier', 'declared', round(multiplier, 4) FROM frailty WHERE class = 'fast'
+    UNION ALL SELECT 'realised slow share', 'observed',
+        round(count(*) FILTER (WHERE class = 'slow') / count(*)::DOUBLE, 4) FROM subject_class
+
+    UNION ALL SELECT 'largest mixture deviation', 'standard errors', round(max(abs(z)), 2)
+    FROM (
+        SELECT (k.incidence - c.incidence_closed)
+             / sqrt(c.incidence_closed * (1 - c.incidence_closed)
+                    / (SELECT count(*) FROM subjects s WHERE s.funnel = c.funnel)) AS z
+        FROM frailty_closed_form c
+        JOIN (
+            SELECT funnel, step, incidence FROM frail_survival
+            WHERE time <= (SELECT value FROM params WHERE key = 'maturity_days')
+            QUALIFY time = max(time) OVER (PARTITION BY funnel, step)
+        ) k ON k.funnel = c.funnel AND k.step = 2
+    )
+
+    UNION ALL SELECT 'observed mean, one exponential', funnel, round(observed_mean, 4)
+        FROM (SELECT funnel, avg(age_at_stage) AS observed_mean FROM events
+              WHERE step = 2 AND observed GROUP BY 1) WHERE funnel = 'retencao'
+    UNION ALL SELECT 'observed mean, two classes', funnel, round(observed_mean, 4)
+        FROM (SELECT funnel, avg(age_at_stage) AS observed_mean FROM frail_events
+              WHERE step = 2 AND observed GROUP BY 1) WHERE funnel = 'retencao'
+    UNION ALL SELECT 'observed mean ratio', b.funnel, round(f.m / b.m, 4)
+        FROM (SELECT funnel, avg(age_at_stage) AS m FROM events WHERE step = 2 AND observed GROUP BY 1) b
+        JOIN (SELECT funnel, avg(age_at_stage) AS m FROM frail_events WHERE step = 2 AND observed GROUP BY 1) f
+          USING (funnel)
+
+    UNION ALL SELECT 'records archived', 'at 21 days', count(*)::DOUBLE FROM archive_decisions
+    UNION ALL SELECT 'share of archived that are slow', 'at 21 days',
+        round(count(*) FILTER (WHERE class = 'slow') / count(*)::DOUBLE, 4) FROM archive_decisions
+    UNION ALL SELECT 'review selectivity', 'slow over population',
+        round((SELECT count(*) FILTER (WHERE class = 'slow') / count(*)::DOUBLE FROM archive_decisions)
+            / (SELECT count(*) FILTER (WHERE class = 'slow') / count(*)::DOUBLE FROM subject_class), 4)
+
+    UNION ALL SELECT 'sweep ratio', funnel || ' at ' || stale_days::INTEGER || ' days', round(ratio, 4)
+        FROM sweep_archiving WHERE funnel IN ('retencao', 'venda') AND stale_days IN (3, 7, 14, 21)
+
+    UNION ALL SELECT 'sweep points at or beyond the horizon', 'count', count(*)::DOUBLE
+        FROM sweep_archiving WHERE stale_days >= 30
+    UNION ALL SELECT 'unbiased at or beyond the horizon', 'count',
+        count(*) FILTER (WHERE abs(ratio - 1.0) < 1e-9)::DOUBLE
+        FROM sweep_archiving WHERE stale_days >= 30
+    UNION ALL SELECT 'sweep points inside the horizon', 'count', count(*)::DOUBLE
+        FROM sweep_archiving WHERE stale_days < 30
+    UNION ALL SELECT 'unbiased inside the horizon', 'count',
+        count(*) FILTER (WHERE abs(ratio - 1.0) < 1e-9)::DOUBLE
+        FROM sweep_archiving WHERE stale_days < 30
+    UNION ALL SELECT 'sweep points above one inside', 'count',
+        count(*) FILTER (WHERE ratio > 1.0 + 1e-9)::DOUBLE FROM sweep_archiving WHERE stale_days < 30
+    UNION ALL SELECT 'sweep points below one inside', 'count',
+        count(*) FILTER (WHERE ratio < 1.0 - 1e-9)::DOUBLE FROM sweep_archiving WHERE stale_days < 30
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

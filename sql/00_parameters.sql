@@ -65,6 +65,46 @@ SELECT * FROM (VALUES
     ('demanda',     5, 'entregue',       0.79, 15.0)
 ) AS t(funnel, step, stage, pass_rate, lag_mean_days);
 
+-- Two classes of subject, because an exponential delay has no memory and that is what protects the
+-- estimator of wave 3.
+--
+-- Under one exponential, a subject that has been open for twenty days is exactly as likely to convert
+-- tomorrow as one that opened this morning. So removing a subset of the slow ones removes nothing the
+-- estimator needed: the survivors have the same future as the departed. That memorylessness is why
+-- wave 3 could not be broken by archiving alone, and it is also an assumption no funnel satisfies -
+-- some deals move and some drag, and the ones that drag were always going to.
+--
+-- The mixture below is the smallest departure that has both a closed form and the property that
+-- matters: the two classes have **the same mean delay** as the single exponential they replace, so
+-- nothing about the average speed of the funnel changes. Only the spread does, and the spread is what
+-- selective censoring can see.
+--
+--   0.30 * 2.5 + 0.70 * (1 - 0.30 * 2.5) / 0.70 = 1.0
+CREATE OR REPLACE TABLE frailty AS
+SELECT * FROM (VALUES
+    ('slow', 0.30, 2.500000),
+    ('fast', 0.70, 0.357143)
+) AS t(class, share, multiplier);
+
+-- The pipeline review that archives what looks dead, and the reason it is dangerous.
+--
+-- A first attempt at this parameter archived every subject still open after `stale_days` with one
+-- probability. That does **not** break wave 3's estimator, and working out why is the wave: conditional
+-- on being open at day twenty-one, archiving a random share removes a representative sample of the
+-- subjects at risk, so the survivors really do stand for the departed and the estimator is entitled to
+-- assume it. A censoring rate that depends only on elapsed time is exactly what the method allows.
+--
+-- What breaks it is **judgement**. A pipeline review does not archive by stopwatch; somebody looks at
+-- the record, asks the account manager, and closes the ones that are genuinely dead. That judgement
+-- correlates with the class - the thing that makes a subject slow in the first place - so the subjects
+-- removed are not a representative sample of the ones still open, and the survivors are faster than the
+-- departed. The class is unobservable, which is why an analyst cannot see any of this from inside the
+-- data: all they see is a censoring.
+CREATE OR REPLACE TABLE archiving AS
+SELECT * FROM (VALUES
+    (21.0, 0.60, 0.10)
+) AS t(stale_days, archive_probability_slow, archive_probability_fast);
+
 -- The generator, written in arithmetic rather than delegated to a library.
 --
 -- A sibling repository of mine published figures that held on one machine and moved on a clean

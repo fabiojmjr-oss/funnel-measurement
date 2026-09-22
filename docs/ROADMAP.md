@@ -156,6 +156,65 @@ one failure that cannot be detected from inside the estimator.
    the comparison with arithmetic done separately. **A plausible number that satisfies every property you
    thought to test is what a derivation is for.**
 
+## Wave 4 — the assumption wave 3 makes, broken on purpose *(complete)*
+
+Wave 3 ended on a caveat and named it the next step. Breaking it took two moves, and the first one is a
+finding about the first three waves.
+
+**Result 1 — an exponential delay cannot be broken by archiving.** Under one exponential a subject open for
+twenty days is exactly as likely to convert tomorrow as one that opened this morning, so removing a share
+of the slow ones removes nothing the estimator needed. The first version of this wave archived every stale
+record with one probability and produced no bias, correctly: a censoring rate that depends only on elapsed
+time is what the method allows. So the exponential had to go before the assumption could be broken.
+
+**Result 2 — spread alone makes the measured speed faster, at a mean that has not moved.** Two declared
+classes, 30% slow at 2.5× and 70% fast at 0.357143×, calibrated so the mean multiplier is exactly 1. The
+estimator stays right on the mixture, within 1.38 standard errors of the two-exponential closed form. But
+the *observed* mean delay falls — 17.2008 days to 14.5152 on `retencao`, a ratio of 0.8439 — because the
+extra spread pushes more of the slow class past the horizon. **Wave 2 assumed one exponential and therefore
+understated its own finding by up to 15.6%.**
+
+**Result 3 — the review that breaks the estimator is judgement, not a stopwatch.** Somebody opens the
+record, asks the account manager and closes what is genuinely dead, and that judgement correlates with the
+class. At the declared 21-day window the review closes 9,541 records, 75.55% of them slow against 29.87% of
+the population: 2.529 times more likely to close a slow record. Nothing in the data records the class,
+which is why the resulting bias cannot be detected from inside it.
+
+**Result 4 — and the bias has no sign.** `retencao` reads 1.0450 of the truth at a three-day window and
+`venda` reads 0.9372, from the same review at the same window. Archiving hides conversions that would have
+happened, which pushes the estimate down; it also removes never-converters from the risk set early, which
+pushes the estimated hazard up. Which wins depends on the pass rate *and* on the slow class's delay against
+the window. Across the sweep the ratio runs 0.9372 to 1.0450, seven points above one and twenty-three below,
+`resgate` changes sign within its own sweep, and the magnitude is not monotone either — `retencao` reads
+1.0036 at fourteen days and 1.0082 at twenty-one. **That is the third time this repository has found an
+error with no sign**, after wave 1's rate and wave 2's inverted ranking, and the three are the same
+structural fact seen from three sides: a reading whose error is a function of two parameters cannot be
+corrected by knowing one of them.
+
+**Result 5 — but there is an exact condition.** All eighteen sweep points whose review window is at or
+beyond the reporting horizon are unbiased to machine precision, because a review that removes nobody before
+day thirty cannot touch an estimate made at day thirty. Inside the horizon only six of thirty-six are. The
+prescription needs no statistics: compare how long a record sits before the review closes it against how
+many days the conversion report covers, two numbers that currently live in different documents.
+
+### Defects found and recorded
+
+6. **A mechanism that produced no effect, because the model it attacked was immune.** The first archiving
+   rule closed every stale record with a single probability and moved nothing. It was not a bug in the SQL -
+   the query was right - it was a design that could not work, and the reason is the memorylessness of the
+   exponential every earlier wave had assumed. Worth recording because of what nearly happened next: the
+   obvious response to "the effect is not there" is to turn the parameter up, and a 0.9 archiving
+   probability would still have produced nothing while looking like a serious test of the assumption. The
+   fix was not a bigger parameter but a different model, and the thing that identified it was asking why the
+   null result was a *correct* null result.
+7. **An assertion I nearly wrote backwards.** Having calibrated the mixture to preserve the mean delay, the
+   natural check is that the observed mean is unchanged. It is not - it falls by up to 16% - and asserting
+   it would have failed for the right reason and been "fixed" by loosening the tolerance until it passed.
+   The identity that holds is on the **declared** parameters: the shares sum to one and the mean multiplier
+   is exactly one, both asserted at 1e-9 and 1e-6. The drop in the observed mean is a published result
+   rather than a tolerance. This is the second time in this repository that a population identity was nearly
+   asserted on a sample, and both times the sample was right and the assertion was wrong.
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -176,11 +235,15 @@ one failure that cannot be detected from inside the estimator.
 
 ## Still open
 
-- **Informative censoring, which is the one thing wave 3 cannot survive.** The estimator assumes the
-  calendar is the only thing that stops a subject being observed. Archiving, a "lost" flag on stale cases
-  and a pipeline review that closes what looks dead all censor the slow subjects *because* they are slow,
-  and none of them is detectable from inside the estimator. Modelling one of them - and showing how far it
-  moves the curve - is the honest next step, because it is the assumption a real funnel breaks first.
+- **A correction for informative censoring, rather than a diagnosis of it.** Wave 4 measures the damage and
+  gives the one condition under which there is none. It offers no estimator that survives a short review
+  window, and the honest options - a sensitivity analysis over the unobserved class, or an inverse-probability
+  weighting on whatever the reviewer *did* see - both need something the data does not contain. Saying which
+  of them is worth the assumption is the next argument.
+- **The class as something an analyst could estimate.** The two classes here are declared and unobservable.
+  A real account has features that correlate with them - channel, size, who owns the record - and whether
+  those features recover enough of the class to make the censoring ignorable is an empirical question this
+  file cannot answer and a real one can.
 - **A confidence band rather than a standard error.** Wave 3 reports Greenwood's standard error at the
   window. A simultaneous band over the whole curve is a different and larger quantity, and quoting the
   pointwise one as though it covered the curve is the next mistake in this family.

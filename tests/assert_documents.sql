@@ -45,7 +45,12 @@ figures(figure) AS (
            ('29.8'), ('0.4453'), ('0.7833'), ('0.1661'), ('0.5820'), ('0.9582'), ('0.9408'),
            ('0.00580'), ('0.00699'), ('0.8302'), ('0.7698'), ('0.9809'), ('0.9506'), ('0.9756'),
            ('0.8953'), ('1.24'), ('1.688'), ('1.05'), ('2.82'), ('0.4992'), ('0.0723'),
-           ('19.911'), ('24.231'), ('13.257'), ('0.139'), ('3.183'), ('0.6817'), ('0.1047')
+           ('19.911'), ('24.231'), ('13.257'), ('0.139'), ('3.183'), ('0.6817'), ('0.1047'),
+           -- Wave 4.
+           ('0.357143'), ('1.38'), ('17.2008'), ('14.5152'), ('0.8439'), ('9.7738'), ('8.8153'),
+           ('0.9019'), ('1.9540'), ('1.8483'), ('0.9459'), ('0.2006'), ('0.2016'), ('1.0047'),
+           ('15.6'), ('75.55'), ('29.87'), ('2.529'), ('1.0450'), ('0.9372'), ('1.0276'),
+           ('0.9700'), ('1.0036'), ('1.0082'), ('0.9986')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -102,19 +107,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 7 AND NOT contains(english.content, 'Seven model files')
+WHERE n = 9 AND NOT contains(english.content, 'Nine model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 9 AND NOT contains(english.content, 'nine assertion files')
+WHERE n = 11 AND NOT contains(english.content, 'eleven assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 7 AND NOT contains(portuguese.content, 'Sete arquivos de modelo')
+WHERE n = 9 AND NOT contains(portuguese.content, 'Nove arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 9 AND NOT contains(portuguese.content, 'nove de asserção')
+WHERE n = 11 AND NOT contains(portuguese.content, 'onze de asserção')
 
 UNION ALL
 SELECT 'a placeholder token survived in ' || name, token
