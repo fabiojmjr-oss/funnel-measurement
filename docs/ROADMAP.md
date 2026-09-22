@@ -113,6 +113,49 @@ the simulation's own spread rather than from a binomial, because these are means
    naming — **an off-by-something that preserves the property you would have tested** is the kind that
    survives a test suite, and the only thing that caught it was looking at the output.
 
+## Wave 3 — the estimator that needs neither the discard nor the assumption *(complete)*
+
+Waves 1 and 2 diagnosed the same censoring twice and prescribed the same expensive fix: read only cohorts
+old enough to have finished. `sql/60_survival.sql` replaces it with the standard answer, which is standard
+because it throws nothing away.
+
+**Result 1 — the cohort reading discards 29.8% of the subjects**, 14,093 of 47,317, and the share grows
+with the arrival growth: it costs most data exactly where the business is moving fastest.
+
+**Result 2 — the product-limit estimator gives the same answer with a tighter interval, on all
+twenty-two stages.** The ratio of standard errors runs from 0.7698 to 0.9809 and never reaches one, which
+is 1.24 times the data on average and 1.688 times on `demanda`, the fastest-growing funnel and therefore
+the one whose young cohorts the cohort reading was refusing to look at. Three closed forms are verified at
+step two: the incidence `p·(1 − e^(−W/m))` within 1.05 standard errors, the plateau against `p`, and the
+half-life against `m·ln 2` to within 2.82%.
+
+**Result 3 — the median time to a stage usually does not exist.** It needs more than half the subjects to
+get there, and fourteen of the twenty-two stages here never do. `resgate` abordado misses having one by
+eight thousandths of a conversion rate. A report quoting a median for a stage 7% of subjects reach has
+computed the median among the ones who made it, which is a different population every month. The quantity
+that is always defined is the half-life — the day by which half of the *eventual* conversions have
+happened — whose closed form `m·ln 2` contains no `p`, making it the only speed measure in this repository
+that a change in completion cannot move.
+
+**And the assumption is stated rather than buried.** The estimator needs censoring to be unrelated to when
+a subject would have converted. Here it is, because the only thing censoring anybody is the calendar. In a
+real funnel it frequently is not — archived records, a "lost" flag on stale cases, a pipeline review that
+closes what looks dead — and each of those censors the slow subjects *because* they are slow, which is the
+one failure that cannot be detected from inside the estimator.
+
+### Defects found and recorded
+
+5. **A survival curve computed on buckets instead of on times.** The first version floored every follow-up
+   to a day, which is what a reporting table looks like and is wrong for a reason the buckets hide: a
+   subject that arrived today is censored at zero days of follow-up and lands in the day-zero risk set
+   beside that day's events. It has had no exposure, so it cannot have an event, and it dilutes the
+   day-zero hazard and every factor of the product after it. On `atendimento`, whose delay is a fifth of a
+   day and whose events therefore almost all fall on day zero, the estimate came out 0.0059 below a closed
+   form it should land on — 0.9523 against 0.9582. Caught by having the closed form to land on: the curve
+   was monotone, the risk set shrank, every structural assertion passed, and the only thing that failed was
+   the comparison with arithmetic done separately. **A plausible number that satisfies every property you
+   thought to test is what a derivation is for.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -133,11 +176,14 @@ the simulation's own spread rather than from a binomial, because these are means
 
 ## Still open
 
-- **Kaplan–Meier, and a median that survives censoring.** Wave 2 offers the restricted mean, which is
-  assumption-free and deliberately blends duration with completion. The standard answer to the question it
-  refuses — how long for the ones who do convert — is a product-limit estimator, and it is expressible in
-  SQL as a running product over the daily risk set. That is the next wave, and it turns wave 2's
-  diagnosis into a measure.
+- **Informative censoring, which is the one thing wave 3 cannot survive.** The estimator assumes the
+  calendar is the only thing that stops a subject being observed. Archiving, a "lost" flag on stale cases
+  and a pipeline review that closes what looks dead all censor the slow subjects *because* they are slow,
+  and none of them is detectable from inside the estimator. Modelling one of them - and showing how far it
+  moves the curve - is the honest next step, because it is the assumption a real funnel breaks first.
+- **A confidence band rather than a standard error.** Wave 3 reports Greenwood's standard error at the
+  window. A simultaneous band over the whole curve is a different and larger quantity, and quoting the
+  pointwise one as though it covered the curve is the next mistake in this family.
 - **Stages that are not a partition.** Everybody here walks forward one step at a time. Real subjects
   skip stages, go backwards, and re-enter months later. A funnel drawn as a monotone staircase drops all
   three silently, and the count of dropped rows is a number no funnel report contains.

@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Seis arquivos de modelo, oito de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Sete arquivos de modelo, nove de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -170,6 +170,62 @@ As duas leituras de tempo fecham algebricamente na etapa dois — a média trunc
 padrão, com a tolerância calculada da própria dispersão da simulação em vez de de uma binomial, porque
 estas são médias.
 
+## E o estimador que não precisa nem do descarte nem da premissa
+
+As ondas 1 e 2 diagnosticaram a mesma coisa duas vezes, e a prescrição da onda 1 — ler coortes velhas o
+bastante para terem terminado — está correta e é caro. Ela se recusa a olhar qualquer coorte mais nova que
+a janela de maturidade, o que nesta conta são **14.093 de 47.317 sujeitos, 29,8%**. E a parcela cresce com
+a taxa de crescimento: a leitura custa mais dados exatamente onde o negócio se move mais rápido.
+
+O estimador produto-limite de Kaplan e Meier não descarta nada. Cada sujeito contribui pelo tempo em que
+foi observado e depois sai do conjunto de risco — um sujeito que entrou há quatro dias diz ao estimador o
+que aconteceu em quatro dias e se cala sobre o quinto. A curva é um produto acumulado sobre o conjunto de
+risco em cada tempo de evento, que é uma window function sobre uma tabela ordenada: o
+`sql/60_survival.sql` é uma consulta, e também não precisou de segunda linguagem.
+
+| Funil | `painel` | `coorte` | **Kaplan–Meier** | `verdade` | erro KM | erro coorte | razão |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `venda` qualificado | 0,4267 | 0,4464 | **0,4453** | 0,4500 | 0,00580 | 0,00699 | **0,8302** |
+| `ativacao` configurado | 0,7820 | 0,7782 | 0,7833 | 0,7800 | 0,00670 | 0,00770 | 0,8701 |
+| `retencao` em-risco | 0,2107 | 0,1656 | 0,1661 | 0,2200 | 0,00575 | 0,00605 | 0,9506 |
+| `resgate` elegivel | 0,7426 | 0,5807 | 0,5820 | 0,6100 | 0,00966 | 0,00990 | 0,9756 |
+| `atendimento` triado | 0,9553 | 0,9583 | 0,9582 | 0,9600 | 0,00167 | 0,00187 | 0,8953 |
+| `demanda` classificada | 0,9101 | 0,9420 | 0,9408 | 0,9400 | 0,00207 | 0,00269 | **0,7698** |
+
+**Mesma resposta, intervalo mais estreito, nas vinte e duas etapas.** A razão entre erros padrão vai de
+**0,7698** a 0,9809 e nunca alcança um, o que em termos de tamanho de amostra é **1,24 vez os dados** em
+média e **1,688 vez** na `demanda` — o funil que cresce mais rápido, e portanto aquele cujas coortes
+jovens a leitura de coorte estava jogando fora. Três formas fechadas são verificadas na etapa dois: a
+incidência `p·(1 − e^(−W/m))` a menos de **1,05** erro padrão, o platô contra `p`, e a meia-vida contra
+`m·ln 2` a menos de 2,82%.
+
+**E o tempo mediano até uma etapa geralmente não existe.** Uma mediana precisa que mais da metade dos
+sujeitos chegue lá, e nesta conta **quatorze das vinte e duas etapas** nunca chegam:
+
+| Etapa | Convertem eventualmente | **Meia-vida** | Mediana |
+| --- | --- | --- | --- |
+| `atendimento` triado | 0,9582 | 0,139 d | 0,15 d |
+| `demanda` priorizada | 0,6817 | 3,183 d | 5,17 d |
+| `resgate` abordado | **0,4992** | 13,257 d | **nenhuma** |
+| `venda` fechado | 0,0723 | **19,911 d** | **nenhuma** |
+| `retencao` renovado | 0,1047 | 24,231 d | **nenhuma** |
+
+O `resgate` abordado deixa de ter mediana por **oito milésimos** de taxa de conversão. Então um relatório
+que cita "tempo mediano até fechar" para uma etapa que 7% dos sujeitos alcançam calculou outra coisa —
+quase sempre a mediana entre os que chegaram, que é uma população diferente a cada mês.
+
+A quantidade sempre definida é a **meia-vida**: o dia em que metade das conversões *eventuais* já
+aconteceu. Sua forma fechada é `m·ln 2`, que não contém `p` nenhum — então é a única medida de velocidade
+aqui que não pode ser movida por uma mudança em quantos convertem. Reporte-a ao lado do platô e as duas
+ficam identificadas; reporte qualquer uma sozinha e a outra a move.
+
+**A limitação é a única premissa que o estimador de fato faz.** A censura tem de ser independente de
+quando o sujeito teria convertido. Aqui ela é, por construção: a única coisa censurando alguém é o
+calendário. Num funil real frequentemente não é — registros são arquivados, casos lentos recebem marca de
+"perdido", uma revisão de pipeline fecha o que parece parado — e cada um desses censura os sujeitos lentos
+*porque* são lentos, que é a única coisa que quebra este estimador e não pode ser detectada de dentro
+dele.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -203,7 +259,8 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/30_readings.sql`](sql/30_readings.sql) | O mesmo funil lido de quatro maneiras, e a distorção entre duas delas. |
 | [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | As duas leituras de taxa derivadas no papel, e os dois mecanismos isolados. |
 | [`sql/50_velocity.sql`](sql/50_velocity.sql) | As quatro leituras de novo na dimensão do tempo, suas formas fechadas, e o ranking de velocidade. |
-| [`tests/`](tests) | Oito arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/60_survival.sql`](sql/60_survival.sql) | O estimador produto-limite, suas três formas fechadas, a precisão que ele compra e a mediana que geralmente não existe. |
+| [`tests/`](tests) | Nove arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -222,7 +279,7 @@ avaliadas.
 atraso é varrido com as entradas estáveis. Cada um isola um mecanismo, e cada um é afirmado como
 propriedade monótona em vez de cifra.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Quatro até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Cinco até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

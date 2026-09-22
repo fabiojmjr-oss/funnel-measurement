@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Six model files, eight assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Seven model files, nine assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -168,6 +168,61 @@ Both time readings close algebraically at step two — the truncated mean
 is **1.11** standard errors, with the tolerance computed from the simulation's own spread rather than
 from a binomial, because these are means.
 
+## And the estimator that needs neither the discard nor the assumption
+
+Waves 1 and 2 diagnosed the same thing twice, and wave 1's prescription — read cohorts old enough to have
+finished — is correct and expensive. It refuses to look at any cohort younger than the maturity window,
+which on this account is **14,093 of 47,317 subjects, 29.8%**. And the share grows with the growth rate:
+the reading costs most data exactly where the business is moving fastest.
+
+Kaplan and Meier's product-limit estimator discards nothing. Each subject contributes for as long as it
+has been observed and then leaves the risk set — a subject that arrived four days ago tells the estimator
+what happened in four days and is silent about the fifth. The curve is a running product over the risk
+set at each event time, which is a window function over a sorted table: `sql/60_survival.sql` is one
+query, and it needed no second language either.
+
+| Funnel | `dashboard` | `cohort` | **Kaplan–Meier** | `truth` | KM error | cohort error | ratio |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `venda` qualificado | 0.4267 | 0.4464 | **0.4453** | 0.4500 | 0.00580 | 0.00699 | **0.8302** |
+| `ativacao` configurado | 0.7820 | 0.7782 | 0.7833 | 0.7800 | 0.00670 | 0.00770 | 0.8701 |
+| `retencao` em-risco | 0.2107 | 0.1656 | 0.1661 | 0.2200 | 0.00575 | 0.00605 | 0.9506 |
+| `resgate` elegivel | 0.7426 | 0.5807 | 0.5820 | 0.6100 | 0.00966 | 0.00990 | 0.9756 |
+| `atendimento` triado | 0.9553 | 0.9583 | 0.9582 | 0.9600 | 0.00167 | 0.00187 | 0.8953 |
+| `demanda` classificada | 0.9101 | 0.9420 | 0.9408 | 0.9400 | 0.00207 | 0.00269 | **0.7698** |
+
+**Same answer, tighter interval, on all twenty-two stages.** The ratio of standard errors runs from
+**0.7698** to 0.9809 and never reaches one, which in sample-size terms is **1.24 times the data** on
+average and **1.688 times** on `demanda` — the fastest-growing funnel, and therefore the one whose young
+cohorts the cohort reading was throwing away. Three closed forms are verified at step two: the incidence
+`p·(1 − e^(−W/m))` within **1.05** standard errors, the plateau against `p`, and the half-life against
+`m·ln 2` to within 2.82%.
+
+**And the median time to a stage usually does not exist.** A median needs more than half the subjects to
+get there, and on this account **fourteen of the twenty-two stages** never do:
+
+| Stage | Eventually convert | **Half-life** | Median |
+| --- | --- | --- | --- |
+| `atendimento` triado | 0.9582 | 0.139 d | 0.15 d |
+| `demanda` priorizada | 0.6817 | 3.183 d | 5.17 d |
+| `resgate` abordado | **0.4992** | 13.257 d | **none** |
+| `venda` fechado | 0.0723 | **19.911 d** | **none** |
+| `retencao` renovado | 0.1047 | 24.231 d | **none** |
+
+`resgate` abordado misses having a median by **eight thousandths** of a conversion rate. So a report that
+quotes a "median time to close" for a stage 7% of subjects reach has computed something else — almost
+always the median among the ones who made it, which is a different population every month.
+
+The quantity that is always defined is the **half-life**: the day by which half of the *eventual*
+conversions have happened. Its closed form is `m·ln 2`, which contains no `p` at all — so it is the only
+speed measure here that cannot be moved by a change in how many convert. Report it beside the plateau and
+the two are identified; report either alone and the other one moves it.
+
+**The limitation is the one assumption the estimator does make.** Censoring has to be unrelated to when a
+subject would have converted. Here it is, by construction: the only thing censoring anybody is the
+calendar. In a real funnel it frequently is not — records get archived, slow cases get a "lost" flag, a
+pipeline review closes what looks stale — and every one of those censors the slow subjects *because* they
+are slow, which is the one thing that breaks this estimator and cannot be detected from inside it.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -199,7 +254,8 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/30_readings.sql`](sql/30_readings.sql) | The same funnel read four ways, and the distortion between two of them. |
 | [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | Both rate readings derived on paper, and the two mechanisms isolated. |
 | [`sql/50_velocity.sql`](sql/50_velocity.sql) | The four readings again in the time dimension, their closed forms, and the speed ranking. |
-| [`tests/`](tests) | Eight assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/60_survival.sql`](sql/60_survival.sql) | The product-limit estimator, its three closed forms, the precision it buys and the median that usually does not exist. |
+| [`tests/`](tests) | Nine assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -217,7 +273,7 @@ of the draw's own index: no state, no seed, and no dependence on the order rows 
 is swept with arrivals flat. Each isolates one mechanism, and each is asserted as a monotone property
 rather than as a figure.
 
-**And defects are recorded rather than quietly fixed.** Four so far, in
+**And defects are recorded rather than quietly fixed.** Five so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

@@ -89,7 +89,42 @@ WITH expected(what, detail, value) AS (
     ('true speed factor',    'retencao over atendimento', 5.7700),
     ('restricted factor',    'retencao over atendimento', 1.6100),
     ('largest velocity deviation', 'standard errors',     1.1100),
-    ('funnel that is slowest reads slowest', 'inversion',  0.0000)
+    ('funnel that is slowest reads slowest', 'inversion',  0.0000),
+
+    -- Wave 3: the product-limit estimator.
+    ('subjects too young for cohorts', 'count',           14093.0000),
+    ('share discarded by cohorts',     'share',               0.2980),
+    ('km_incidence', 'venda qualificado',                      0.4453),
+    ('km_incidence', 'ativacao configurado',                   0.7833),
+    ('km_incidence', 'retencao em-risco',                      0.1661),
+    ('km_incidence', 'resgate elegivel',                       0.5820),
+    ('km_incidence', 'atendimento triado',                     0.9582),
+    ('km_incidence', 'demanda classificada',                   0.9408),
+    ('km_standard_error',     'venda qualificado',             0.0058),
+    ('cohort_standard_error', 'venda qualificado',             0.0070),
+    ('standard_error_ratio',  'venda qualificado',             0.8302),
+    ('standard_error_ratio',  'demanda classificada',          0.7698),
+    ('standard_error_ratio',  'retencao em-risco',             0.9506),
+    ('standard_error_ratio',  'resgate elegivel',              0.9756),
+    ('standard_error_ratio',  'atendimento triado',            0.8953),
+    ('best error ratio',      'all stages',                    0.7698),
+    ('worst error ratio',     'all stages',                    0.9809),
+    ('mean equivalent sample','all stages',                    1.2400),
+    ('demanda equivalent sample', 'classificada',              1.6880),
+    ('largest survival deviation', 'standard errors',          1.0500),
+    ('worst half-life gap',   'relative',                      0.0282),
+    ('stages with no median', 'count',                        14.0000),
+    ('stages beyond entry',   'count',                        22.0000),
+    ('plateau_incidence', 'resgate abordado',                  0.4992),
+    ('plateau_incidence', 'venda fechado',                     0.0723),
+    ('plateau_incidence', 'retencao renovado',                 0.1047),
+    ('plateau_incidence', 'demanda priorizada',                0.6817),
+    ('plateau_incidence', 'atendimento triado',                0.9582),
+    ('half_life_days', 'venda fechado',                       19.9110),
+    ('half_life_days', 'retencao renovado',                   24.2310),
+    ('half_life_days', 'resgate abordado',                    13.2570),
+    ('half_life_days', 'atendimento triado',                   0.1390),
+    ('half_life_days', 'demanda priorizada',                   3.1830)
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -178,6 +213,45 @@ measured(what, detail, value) AS (
         CASE WHEN (SELECT funnel FROM speed_ranking WHERE rank_actually_slowest = 1)
                 = (SELECT funnel FROM speed_ranking WHERE rank_reads_slowest = 1)
              THEN 1.0 ELSE 0.0 END
+
+    UNION ALL SELECT 'subjects too young for cohorts', 'count', too_young_for_cohorts::DOUBLE FROM data_discarded
+    UNION ALL SELECT 'share discarded by cohorts', 'share', round(share_discarded, 3) FROM data_discarded
+
+    UNION ALL SELECT 'km_incidence', funnel || ' ' || stage, round(km_incidence, 4)
+        FROM survival_readings WHERE step = 2
+    UNION ALL SELECT 'km_standard_error', funnel || ' ' || stage, round(km_standard_error, 4)
+        FROM survival_readings WHERE step = 2
+    UNION ALL SELECT 'cohort_standard_error', funnel || ' ' || stage, round(cohort_standard_error, 4)
+        FROM survival_readings WHERE step = 2
+    UNION ALL SELECT 'standard_error_ratio', funnel || ' ' || stage, round(standard_error_ratio, 4)
+        FROM survival_readings WHERE step = 2
+
+    UNION ALL SELECT 'best error ratio', 'all stages', round(min(standard_error_ratio), 4)
+        FROM survival_readings WHERE step > 1
+    UNION ALL SELECT 'worst error ratio', 'all stages', round(max(standard_error_ratio), 4)
+        FROM survival_readings WHERE step > 1
+    UNION ALL SELECT 'mean equivalent sample', 'all stages',
+        round(avg(1.0 / pow(standard_error_ratio, 2)), 2) FROM survival_readings WHERE step > 1
+    UNION ALL SELECT 'demanda equivalent sample', 'classificada',
+        round(1.0 / pow(standard_error_ratio, 2), 3) FROM survival_readings
+        WHERE funnel = 'demanda' AND step = 2
+
+    UNION ALL SELECT 'largest survival deviation', 'standard errors',
+        round(max(abs(v.km_incidence - c.incidence_closed) / v.km_standard_error), 2)
+        FROM survival_readings v JOIN survival_closed_form c ON c.funnel = v.funnel WHERE v.step = 2
+    UNION ALL SELECT 'worst half-life gap', 'relative',
+        round(max(abs(v.half_life_days / c.half_life_closed - 1.0)), 4)
+        FROM survival_readings v JOIN survival_closed_form c ON c.funnel = v.funnel WHERE v.step = 2
+
+    UNION ALL SELECT 'stages with no median', 'count',
+        count(*) FILTER (WHERE median_days IS NULL)::DOUBLE FROM survival_readings WHERE step > 1
+    UNION ALL SELECT 'stages beyond entry', 'count', count(*)::DOUBLE
+        FROM survival_readings WHERE step > 1
+
+    UNION ALL SELECT 'plateau_incidence', funnel || ' ' || stage, round(plateau_incidence, 4)
+        FROM survival_readings WHERE step > 1
+    UNION ALL SELECT 'half_life_days', funnel || ' ' || stage, round(half_life_days, 3)
+        FROM survival_readings WHERE step > 1
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,
