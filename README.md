@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Five model files, seven assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Six model files, eight assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -115,6 +115,59 @@ the quarter the rate appears to recover.
 On `resgate` the two errors point the same way — arrivals are shrinking *and* the funnel takes 29 days
 against a 30-day window — which is how one number ends up at 1.9826.
 
+## And the same censoring, in the time dimension
+
+Wave 1 asked what share of subjects reach a stage. The other half of a funnel review is how long they
+take, and the same subjects are missing from that average: **the ones who have not reached the stage yet
+are the slow ones.** A mean time-to-stage computed over the conversions in an event table is an average
+over the survivors of a race still being run.
+
+| Funnel | Arrivals | Actually takes | Reads as | reads ÷ actual | Restricted (30d) | Is slowest | **Reads slowest** |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `retencao` | flat | **30.0 d** | 26.82 | 0.894 | 29.15 | **1st** | 2nd |
+| `resgate` | −0.9%/day | 29.0 d | **29.07** | **1.002** | 29.64 | 2nd | **1st** |
+| `demanda` | +2.0%/day | 27.0 d | 22.09 | **0.818** | 27.01 | 3rd | 3rd |
+| `venda` | +1.2%/day | 23.0 d | 20.08 | 0.873 | 29.24 | 4th | 4th |
+| `ativacao` | +0.8%/day | 19.0 d | 17.55 | 0.924 | 26.12 | 5th | 5th |
+| `atendimento` | +0.3%/day | 5.2 d | 5.01 | 0.964 | 18.13 | 6th | 6th |
+
+**The ranking inverts at the top.** `retencao` is the slowest funnel in the account and reads as the
+second slowest; `resgate` is the second slowest and reads as the slowest. Nothing about either funnel's
+behaviour is involved: `resgate`'s arrivals are *shrinking*, so its observed conversions come almost
+entirely from old, fully matured cohorts and its reading is barely censored at all — **1.002** of the
+truth. `retencao`'s flat arrivals still carry young cohorts, so its slow cases are still in flight.
+The funnel that is measured most honestly is the one whose demand is dying.
+
+**And unlike the rate, the time reading has no growth rate at which it is right.** Wave 1's dashboard
+rate lands exactly on the eventual rate when arrivals are flat. Hold a twenty-day delay and sweep the
+arrivals, and the time reading is fast *everywhere*:
+
+| Arrivals | Actually takes | Reads as | reads ÷ actual |
+| --- | --- | --- | --- |
+| −3%/day | 20.0 d | 19.714 | 0.9857 |
+| flat | 20.0 d | 17.511 | **0.8756** |
+| +3%/day | 20.0 d | **12.514** | **0.6257** |
+
+At flat arrivals it is still 12% fast, because the young cohorts exist whether or not they are growing.
+At +3% a day the funnel reports **37% faster than it is**. Monotone across all sixty-one points, and
+there is no fixed point to aim at.
+
+**The measure that needs no assumption is not a duration.** `restricted` above is
+`mean(min(time, 30 days))` over every subject of a mature cohort, counting anybody who had not converted
+by day 30 at 30. It is defined for everybody, it requires nothing to be assumed about the unconverted,
+and its closed form is `(1 − p)·W + p·m·(1 − e^(−W/m))` — but read what it does to `atendimento`: the
+fastest funnel in the account by a factor of **5.77** reads only **1.61** times faster than the slowest,
+because 52.7% of its subjects never reach `confirmado` and are counted at the window's edge. The measure
+blends duration with completion by construction.
+
+So the honest report is a **pair, not a number**: the restricted mean beside wave 1's cohort rate. Either
+one alone can be moved by the other, and neither is identified without it.
+
+Both time readings close algebraically at step two — the truncated mean
+`m − W·e^(−W/m)/(1 − e^(−W/m))` and the restricted mean above — and the largest of the twelve deviations
+is **1.11** standard errors, with the tolerance computed from the simulation's own spread rather than
+from a binomial, because these are means.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -144,8 +197,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/10_subjects.sql`](sql/10_subjects.sql) | Arrivals per funnel per day, compounded at the declared growth. |
 | [`sql/20_events.sql`](sql/20_events.sql) | The event log: one row per subject and per stage it actually reached. |
 | [`sql/30_readings.sql`](sql/30_readings.sql) | The same funnel read four ways, and the distortion between two of them. |
-| [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | Both readings derived on paper, and the two mechanisms isolated. |
-| [`tests/`](tests) | Seven assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | Both rate readings derived on paper, and the two mechanisms isolated. |
+| [`sql/50_velocity.sql`](sql/50_velocity.sql) | The four readings again in the time dimension, their closed forms, and the speed ranking. |
+| [`tests/`](tests) | Eight assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -163,7 +217,7 @@ of the draw's own index: no state, no seed, and no dependence on the order rows 
 is swept with arrivals flat. Each isolates one mechanism, and each is asserted as a monotone property
 rather than as a figure.
 
-**And defects are recorded rather than quietly fixed.** Three so far, in
+**And defects are recorded rather than quietly fixed.** Four so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

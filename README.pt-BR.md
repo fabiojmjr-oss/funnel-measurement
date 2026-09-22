@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Cinco arquivos de modelo, sete de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Seis arquivos de modelo, oito de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -117,6 +117,59 @@ finalmente para de crescer é o trimestre em que a taxa parece se recuperar.
 No `resgate` os dois erros apontam para o mesmo lado — as entradas estão caindo *e* o funil leva 29 dias
 contra uma janela de 30 — e é assim que um número chega a 1,9826.
 
+## E a mesma censura, na dimensão do tempo
+
+A onda 1 perguntou que parcela dos sujeitos chega a uma etapa. A outra metade de uma revisão de funil é
+quanto tempo eles levam, e os mesmos sujeitos estão faltando nessa média: **os que ainda não chegaram à
+etapa são os lentos.** Um tempo médio até a etapa calculado sobre as conversões de uma tabela de eventos
+é uma média sobre os sobreviventes de uma corrida ainda em andamento.
+
+| Funil | Entradas | Leva de fato | Lê como | lê ÷ real | Restrito (30d) | É o mais lento | **Lê como mais lento** |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `retencao` | estável | **30,0 d** | 26,82 | 0,894 | 29,15 | **1º** | 2º |
+| `resgate` | −0,9%/dia | 29,0 d | **29,07** | **1,002** | 29,64 | 2º | **1º** |
+| `demanda` | +2,0%/dia | 27,0 d | 22,09 | **0,818** | 27,01 | 3º | 3º |
+| `venda` | +1,2%/dia | 23,0 d | 20,08 | 0,873 | 29,24 | 4º | 4º |
+| `ativacao` | +0,8%/dia | 19,0 d | 17,55 | 0,924 | 26,12 | 5º | 5º |
+| `atendimento` | +0,3%/dia | 5,2 d | 5,01 | 0,964 | 18,13 | 6º | 6º |
+
+**O ranking inverte no topo.** O `retencao` é o funil mais lento da conta e lê como o segundo mais
+lento; o `resgate` é o segundo mais lento e lê como o mais lento. Nada do comportamento de nenhum dos
+dois está envolvido: as entradas do `resgate` estão *caindo*, então suas conversões observadas vêm quase
+inteiramente de coortes antigas e plenamente maduras, e sua leitura quase não é censurada — **1,002** da
+verdade. As entradas estáveis do `retencao` ainda carregam coortes jovens, então seus casos lentos ainda
+estão em curso. O funil medido com mais honestidade é aquele cuja demanda está morrendo.
+
+**E, diferente da taxa, a leitura de tempo não tem taxa de crescimento na qual esteja certa.** A taxa do
+painel da onda 1 cai exatamente sobre a taxa eventual quando as entradas estão estáveis. Mantenha um
+atraso de vinte dias e varra as entradas, e a leitura de tempo é rápida *em todo ponto*:
+
+| Entradas | Leva de fato | Lê como | lê ÷ real |
+| --- | --- | --- | --- |
+| −3%/dia | 20,0 d | 19,714 | 0,9857 |
+| estável | 20,0 d | 17,511 | **0,8756** |
+| +3%/dia | 20,0 d | **12,514** | **0,6257** |
+
+Com entradas estáveis ainda é 12% rápida, porque as coortes jovens existem independentemente de estarem
+crescendo. A +3% ao dia o funil reporta **37% mais rápido do que é**. Monótono nos sessenta e um pontos,
+e não há ponto fixo para mirar.
+
+**A medida que não exige premissa nenhuma não é uma duração.** O `restrito` acima é
+`média(mín(tempo, 30 dias))` sobre cada sujeito de uma coorte madura, contando a 30 quem não havia
+convertido até o dia 30. É definida para todos, não exige nada a ser assumido sobre os não convertidos, e
+sua forma fechada é `(1 − p)·W + p·m·(1 − e^(−W/m))` — mas veja o que ela faz com o `atendimento`: o
+funil mais rápido da conta por um fator de **5,77** lê só **1,61** vez mais rápido que o mais lento,
+porque 52,7% dos seus sujeitos nunca chegam a `confirmado` e são contados na borda da janela. A medida
+mistura duração com conclusão por construção.
+
+Então o relatório honesto é um **par, não um número**: a média restrita ao lado da taxa de coorte da onda
+1. Cada uma sozinha pode ser movida pela outra, e nenhuma está identificada sem a outra.
+
+As duas leituras de tempo fecham algebricamente na etapa dois — a média truncada
+`m − W·e^(−W/m)/(1 − e^(−W/m))` e a média restrita acima — e o maior dos doze desvios é de **1,11** erro
+padrão, com a tolerância calculada da própria dispersão da simulação em vez de de uma binomial, porque
+estas são médias.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -148,8 +201,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/10_subjects.sql`](sql/10_subjects.sql) | Entradas por funil por dia, compostas no crescimento declarado. |
 | [`sql/20_events.sql`](sql/20_events.sql) | O log de eventos: uma linha por sujeito e por etapa efetivamente alcançada. |
 | [`sql/30_readings.sql`](sql/30_readings.sql) | O mesmo funil lido de quatro maneiras, e a distorção entre duas delas. |
-| [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | As duas leituras derivadas no papel, e os dois mecanismos isolados. |
-| [`tests/`](tests) | Sete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/40_closed_form.sql`](sql/40_closed_form.sql) | As duas leituras de taxa derivadas no papel, e os dois mecanismos isolados. |
+| [`sql/50_velocity.sql`](sql/50_velocity.sql) | As quatro leituras de novo na dimensão do tempo, suas formas fechadas, e o ranking de velocidade. |
+| [`tests/`](tests) | Oito arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -168,7 +222,7 @@ avaliadas.
 atraso é varrido com as entradas estáveis. Cada um isola um mecanismo, e cada um é afirmado como
 propriedade monótona em vez de cifra.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Três até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Quatro até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

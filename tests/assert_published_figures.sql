@@ -62,7 +62,34 @@ WITH expected(what, detail, value) AS (
     -- Two claims the prose makes about the whole sweep and the whole verification.
     ('largest deviation from the derivation', 'standard errors', 2.0400),
     ('dashboard at -3% over dashboard at +3%', 'spread',         1.1651),
-    ('points in the growth sweep',            'count',          61.0000)
+    ('points in the growth sweep',            'count',          61.0000),
+
+    -- Wave 2: the time dimension.
+    ('declared_mean',    'retencao renovado',           30.0000),
+    ('naive_mean',       'retencao renovado',           26.8200),
+    ('restricted_mean',  'retencao renovado',           29.1500),
+    ('naive_over_declared', 'retencao renovado',         0.8940),
+    ('declared_mean',    'resgate reativado',           29.0000),
+    ('naive_mean',       'resgate reativado',           29.0700),
+    ('restricted_mean',  'resgate reativado',           29.6400),
+    ('naive_over_declared', 'resgate reativado',         1.0020),
+    ('naive_mean',       'demanda entregue',            22.0900),
+    ('naive_over_declared', 'demanda entregue',          0.8180),
+    ('naive_mean',       'venda fechado',               20.0800),
+    ('restricted_mean',  'venda fechado',               29.2400),
+    ('naive_mean',       'ativacao uso-recorrente',     17.5500),
+    ('naive_mean',       'atendimento confirmado',       5.0100),
+    ('restricted_mean',  'atendimento confirmado',      18.1300),
+    ('velocity sweep reads at -3%', 'growth',           19.7140),
+    ('velocity sweep reads at 0%',  'growth',           17.5110),
+    ('velocity sweep reads at +3%', 'growth',           12.5140),
+    ('velocity ratio at -3%',       'growth',            0.9857),
+    ('velocity ratio at 0%',        'growth',            0.8756),
+    ('velocity ratio at +3%',       'growth',            0.6257),
+    ('true speed factor',    'retencao over atendimento', 5.7700),
+    ('restricted factor',    'retencao over atendimento', 1.6100),
+    ('largest velocity deviation', 'standard errors',     1.1100),
+    ('funnel that is slowest reads slowest', 'inversion',  0.0000)
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -119,6 +146,38 @@ measured(what, detail, value) AS (
             / (SELECT window_rate FROM sweep_growth WHERE growth = 0.03), 4)
 
     UNION ALL SELECT 'points in the growth sweep', 'count', count(*)::DOUBLE FROM sweep_growth
+
+    UNION ALL SELECT 'declared_mean', funnel || ' ' || stage, round(declared_mean, 4) FROM speed_ranking
+    UNION ALL SELECT 'naive_mean', funnel || ' ' || stage, round(naive_mean, 2) FROM speed_ranking
+    UNION ALL SELECT 'restricted_mean', funnel || ' ' || stage, round(restricted_mean, 2) FROM speed_ranking
+    UNION ALL SELECT 'naive_over_declared', funnel || ' ' || stage, round(naive_over_declared, 3) FROM speed_ranking
+
+    UNION ALL SELECT 'velocity sweep reads at -3%', 'growth', round(naive_mean, 3) FROM sweep_velocity WHERE growth = -0.03
+    UNION ALL SELECT 'velocity sweep reads at 0%',  'growth', round(naive_mean, 3) FROM sweep_velocity WHERE growth = 0.0
+    UNION ALL SELECT 'velocity sweep reads at +3%', 'growth', round(naive_mean, 3) FROM sweep_velocity WHERE growth = 0.03
+    UNION ALL SELECT 'velocity ratio at -3%', 'growth', round(naive_mean / declared_mean, 4) FROM sweep_velocity WHERE growth = -0.03
+    UNION ALL SELECT 'velocity ratio at 0%',  'growth', round(naive_mean / declared_mean, 4) FROM sweep_velocity WHERE growth = 0.0
+    UNION ALL SELECT 'velocity ratio at +3%', 'growth', round(naive_mean / declared_mean, 4) FROM sweep_velocity WHERE growth = 0.03
+
+    UNION ALL SELECT 'true speed factor', 'retencao over atendimento',
+        round((SELECT declared_mean FROM speed_ranking WHERE funnel = 'retencao')
+            / (SELECT declared_mean FROM speed_ranking WHERE funnel = 'atendimento'), 2)
+    UNION ALL SELECT 'restricted factor', 'retencao over atendimento',
+        round((SELECT restricted_mean FROM speed_ranking WHERE funnel = 'retencao')
+            / (SELECT restricted_mean FROM speed_ranking WHERE funnel = 'atendimento'), 2)
+
+    UNION ALL SELECT 'largest velocity deviation', 'standard errors',
+        round(max(greatest(
+            abs((v.conditional_mean - c.conditional_closed) / (v.conditional_sd / sqrt(v.conditional_n))),
+            abs((v.restricted_mean - c.restricted_closed) / (v.restricted_sd / sqrt(v.subjects_at_risk)))
+        )), 2)
+    FROM velocity v JOIN velocity_closed_form c ON c.funnel = v.funnel WHERE v.step = 2
+
+    -- Zero means the inversion is still there: the slowest funnel is not the one that reads slowest.
+    UNION ALL SELECT 'funnel that is slowest reads slowest', 'inversion',
+        CASE WHEN (SELECT funnel FROM speed_ranking WHERE rank_actually_slowest = 1)
+                = (SELECT funnel FROM speed_ranking WHERE rank_reads_slowest = 1)
+             THEN 1.0 ELSE 0.0 END
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

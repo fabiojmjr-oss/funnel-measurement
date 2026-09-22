@@ -69,6 +69,50 @@ rate, and it costs one query.
    the output. Worth recording as the most dangerous of the three: the other two were wrong answers,
    this one was a green build over an assertion that did not exist.
 
+## Wave 2 — the same censoring, in the time dimension *(complete)*
+
+Wave 1 read the rate. The other half of a funnel review is the duration, and the subjects missing from
+that average are exactly the slow ones. `sql/50_velocity.sql` adds four time readings beside wave 1's
+four rate readings, both closed forms, and the sweep that isolates the mechanism.
+
+**Result 1 — the naive mean time is fast everywhere, between 0.818 and 1.002 of the truth.** The most
+distorted funnel is the fastest-growing one, which is the same ordering wave 1 found and the same cause.
+
+**Result 2 — the ranking inverts at the top.** `retencao` is the slowest funnel in the account, at a
+declared 30.0 days, and reads as the second slowest at 26.82. `resgate` is second at 29.0 and reads as
+the slowest at 29.07. The cause is that `resgate`'s arrivals are *shrinking*, so its observed conversions
+come almost entirely from old cohorts and its reading is censored by almost nothing — 1.002 of the truth.
+**The funnel measured most honestly is the one whose demand is dying**, which is a sentence no operating
+review has ever said out loud.
+
+**Result 3 — unlike the rate, the time reading has no fixed point.** Wave 1's dashboard rate is exactly
+the eventual rate when arrivals are flat. Sweeping arrivals against a twenty-day delay, the time reading
+is 0.9857 of the truth at −3% a day, **0.8756 at flat arrivals**, and 0.6257 at +3%. There is no growth
+rate at which it is right, because the young cohorts exist whether or not they are growing.
+
+**Result 4 — the assumption-free measure is not a duration.** The restricted mean,
+`mean(min(time, W))` over every subject of a mature cohort, needs nothing assumed about the unconverted
+and has the closed form `(1 − p)·W + p·m·(1 − e^(−W/m))`. It is also, by construction, a blend of duration
+and completion: `atendimento` is 5.77 times faster than `retencao` and its restricted mean is only 1.61
+times lower, because 52.7% of its subjects never reach the last stage and are counted at the window's
+edge. So the honest report is the restricted mean **beside** wave 1's cohort rate — a pair, because each
+one alone can be moved by the other.
+
+Both time readings are verified against the algebra at step two, where a single exponential closes. The
+largest of the twelve deviations is 1.11 standard errors, and the tolerance is four of them computed from
+the simulation's own spread rather than from a binomial, because these are means and not proportions.
+
+### Defects found and recorded
+
+4. **A window function ranked the rows the query had not filtered yet.** `speed_ranking` computed
+   `rank() OVER (ORDER BY declared_mean DESC)` in the same query as the `QUALIFY` that picks each funnel's
+   last stage. A window function is evaluated **before** `QUALIFY`, so the ranks were computed over all
+   twenty-eight stages and came out 1, 2, 3, 5, 8, 15 for six funnels. Visible only because the numbers
+   were printed and read: every rank was still in the right *order*, so any assertion about the ordering
+   would have passed. Fixed by selecting the last-stage rows in a CTE and ranking that. The class is worth
+   naming — **an off-by-something that preserves the property you would have tested** is the kind that
+   survives a test suite, and the only thing that caught it was looking at the output.
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -89,10 +133,11 @@ rate, and it costs one query.
 
 ## Still open
 
-- **Velocity, and the survivorship in it.** The mean time to a stage, computed over the subjects who
-  reached it, is biased downward by exactly the subjects who have not reached it yet — the same censoring
-  that produces wave 1's findings, in the time dimension instead of the rate dimension. It is the next
-  wave and it is cheap, because the event log already carries `age_at_stage`.
+- **Kaplan–Meier, and a median that survives censoring.** Wave 2 offers the restricted mean, which is
+  assumption-free and deliberately blends duration with completion. The standard answer to the question it
+  refuses — how long for the ones who do convert — is a product-limit estimator, and it is expressible in
+  SQL as a running product over the daily risk set. That is the next wave, and it turns wave 2's
+  diagnosis into a measure.
 - **Stages that are not a partition.** Everybody here walks forward one step at a time. Real subjects
   skip stages, go backwards, and re-enter months later. A funnel drawn as a monotone staircase drops all
   three silently, and the count of dropped rows is a number no funnel report contains.
