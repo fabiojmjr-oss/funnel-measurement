@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Nine model files, eleven assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Eleven model files, thirteen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -293,6 +293,150 @@ That is the whole prescription, and it needs no statistics to apply — only tha
 numbers that currently live in different documents: how long a record sits before the review closes it,
 and how many days the conversion report covers.
 
+## And the funnel that is not a funnel at all: the queue inside `demanda`
+
+Every wave above is about a *reading* being wrong. This one is not. `demanda` has a stage called
+`priorizada`, and nothing in a pass rate or a delay contains the fact that makes prioritising a decision
+at all: **the team works on one demand at a time, so putting this item first puts another item second.**
+A delay is not a property of the demand. It is mostly the time the demand spends behind other demands.
+
+So [`sql/90_queue.sql`](sql/90_queue.sql) replaces the delay of a stage with a server. One server, three
+declared classes — 10% `critico` at 1.25 days of handling, 30% `padrao` at 0.75, 60% `melhoria` at 0.50 —
+arriving Poisson at 1.2 a day, which leaves the server busy **0.78** of the time. That is M/G/1 with
+non-preemptive priority, chosen because its mean waiting time is known on paper for every class under
+every priority order, so every figure below is checked against arithmetic done separately.
+
+Three orders are compared: first-come-first-served, `priority` (critical first), and `reversed` — which
+is not a straw man, because clearing the quick items to make the backlog count fall is what teams
+actually do under pressure, and `melhoria` is both the least urgent class and the cheapest to serve.
+
+| Order | `critico` | `padrao` | `melhoria` | **mean wait per demand** |
+| --- | --- | --- | --- | --- |
+| first-come-first-served | 2.5461 d | 2.5624 d | 2.5632 d | **2.5612 d** |
+| `priority` | **0.6961 d** | 1.1636 d | **4.3583 d** | **3.0358 d** (1.1853×) |
+| `reversed` | **6.7375 d** | 2.3953 d | **0.9051 d** | **1.9382 d** (0.7568×) |
+
+Every one of those nine numbers lands on its closed form — Cobham's formula for the priority orders,
+Pollaczek and Khinchine's for first-come-first-served — the worst deviation being **1.293** standard
+errors. The derivations are 0.6705, 1.1473 and 4.4261 days under `priority`, 6.9737, 2.4147 and 0.8957
+under `reversed`, and 2.5868 for all three classes under first-come-first-served, which does not know the
+classes exist.
+
+### The total waiting does not move. At all.
+
+The last column of that table is the number a service desk reports, and it swings by a factor of
+**1.5663** between the two priority orders. Now weight each demand by the handling time it brings rather
+than counting it once:
+
+| Order | reported mean wait | mean wait per day of work |
+| --- | --- | --- |
+| first-come-first-served | 2.5612 d | **2.5540477739** d |
+| `priority` | 3.0358 d | **2.5540477739** d |
+| `reversed` | 1.9382 d | **2.5540477739** d |
+
+That is not a coincidence and not a steady-state approximation. The area under the unfinished-work curve
+over a busy period is the same under every discipline that never idles while work is waiting, and each
+demand contributes `service × wait + service² / 2` to it. The second term does not depend on the order, so
+`sum(service × wait)` **cannot** depend on the order — not approximately, not in expectation, but in
+every realisation. It is asserted at a relative 1e-12 and holds to twelve decimal places at every
+utilisation swept.
+
+> **Prioritisation is not an improvement. It is an allocation.** The pool of waiting is fixed by how much
+> work arrives and how fast the team is. A priority order decides who bears it, and nothing else.
+
+And the metric that would tell a manager this is not the one on the dashboard. The reported mean wait
+rises **18.5%** under the order that protects critical demands and falls **24.3%** under the order that
+abandons them, because `melhoria` is both the most numerous class and the cheapest to serve. **The
+service-desk KPI rewards the discipline that makes critical demands wait 6.7375 days.**
+
+### What prioritising does buy, and the ceiling it cannot pass
+
+| Order | `critico` meets its 2-day target | `melhoria` meets its 6-day target |
+| --- | --- | --- |
+| first-come-first-served | 0.3752 | 0.8486 |
+| `priority` | **0.6295** | 0.7264 |
+| `reversed` | 0.3207 | 0.9925 |
+
+Prioritising is worth a real 25 points of critical attainment, and it is bought from `melhoria`. But
+**0.7956** is the share of critical demands that would meet a two-day target *with no queue at all* — the
+handling alone exceeds two days one time in five. So a fifth of that target was never reachable by
+scheduling, at any utilisation, under any order. Ordering the queue closed 60% of the gap that ordering
+could close, and the rest is a target written against a process whose own variation forbids it.
+
+### One more percent of demand
+
+Waiting is convex in utilisation, and the elasticity is exactly `1 / (1 − u)`:
+
+| Utilisation | mean wait per day of work | % of waiting per % of demand |
+| --- | --- | --- |
+| 0.40 | 0.4925 d | 1.667 |
+| 0.50 | 0.7408 d | 2.000 |
+| 0.78 | 2.5957 d | **4.545** |
+| 0.90 | 6.8417 d | 10.000 |
+| 0.98 | 24.2435 d | 50.000 |
+
+At the declared 0.78, one percent more demand buys four and a half percent more waiting; at 0.90 it buys
+ten. By the invariance above, **no discipline changes a single row of that table.** The only levers on
+total waiting are the amount of work arriving and the capacity serving it, and a prioritisation review
+that produces neither has decided who waits without changing how much waiting there is.
+
+### And the one error in this repository that does have a sign
+
+Waves 1, 2 and 4 each found an error that changes sign with a parameter nobody reports, so no mental
+correction exists. This one is different, and worse. The closed forms above are steady-state limits, and
+what makes waiting large near capacity is a small number of very long busy periods — so as the server
+fills up, the number of *independent* observations in a run collapses even though the number of demands
+does not. At 0.98, one busy period holds **0.2121** of this entire 60,000-demand stream: 12,724 demands in
+a single unbroken pile.
+
+| Utilisation | 5,000 demands | 20,000 demands | 60,000 demands |
+| --- | --- | --- | --- |
+| 0.78 | 0.7048 | 0.9847 | 0.9873 |
+| 0.95 | 0.4289 | 0.9367 | 0.9641 |
+| 0.98 | 0.2442 | 0.6238 | **0.8422** |
+
+Nine readings out of nine are **below** the truth, and near capacity even 60,000 demands reads 16% low.
+A short observation of a queue does not scatter around the answer; it understates it, because the long
+pile-ups that carry the mean are the ones a short window is least likely to contain. **The quantity a
+capacity review most wants — how bad does it get when we are nearly full — is the one a finite
+observation is least able to report, and the error is in the direction that feels safe.**
+
+Which is not a hypothetical, because a quarterly review is a very short observation. Cut this unchanging
+stream into consecutive 180-day slices — same arrival rate, same handling times, same discipline, same
+utilisation, nothing different between them — and read each one the way a review would:
+
+| | |
+| --- | --- |
+| Slices of 180 days | 277, averaging 216.6 demands each |
+| True mean wait | 2.5318 d |
+| Lowest slice reads | **0.6441 d** — attributable to a desk at 0.50 utilisation |
+| Highest slice reads | **9.3057 d** — attributable to a desk at 0.90 utilisation |
+| Highest over lowest | **14.4486×** |
+| Interval a reviewer would draw (4 × sd/√n) | ± 0.6925 d |
+| Interval the slices actually show | ± 5.8781 d |
+| Understated by | **8.4879×** |
+
+Nothing changed. The same desk, read one quarter at a time, reports a mean wait anywhere across a factor
+of fourteen, and the confidence interval a reviewer would draw around it is eight times too narrow.
+
+> **Before reading a change in a queue's waiting time as a change in the queue, ask how many independent
+> pile-ups the reading contains.** Not how many tickets — how many times the queue emptied. At 0.78 that
+> is a fifth of the ticket count; at 0.98 it is a fiftieth.
+
+The interval is too narrow for a reason that matters beyond this table, and it is why every standard error
+in this wave is a clustered one. Waits in a queue are not independent observations: a demand that waits a
+long time arrived behind a pile, and so did the one after it. What *is* independent is the busy period —
+each one starts with an empty system and carries no memory of the last. Treating 60,000 waits as 60,000
+independent draws understates the interval by between **1.482** and **6.362** times depending on the class
+and the order, worst for the class whose waiting is most caused by other demands. The cost is honest:
+these closed-form checks can detect an error of **7.01%** to **20.23%** and no smaller, where the naive
+interval would have claimed as little as **2.57%** and been wrong.
+
+That busy period is the same object three times over. It makes the invariance exact, it makes the
+interval honest, and it is what let the two priority orders be simulated at all: a 60,000-step recursion
+becomes thousands of independent ones that run at once, precisely *because* no ordering of the queue can
+move the instants at which the server goes idle.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -303,6 +447,20 @@ and how many days the conversion report covers.
   cheapest possible red flag, and it costs one query.
 - **Ask what the arrivals did.** Before reading any movement in a funnel rate as behaviour, look at
   whether the top of the funnel grew. On this account that single question explains a factor of two.
+- **Weight waiting by the work it carries, not by the ticket count.** The ticket-weighted mean can be
+  improved by serving the cheap items first, and doing so makes the critical ones wait longer. The
+  work-weighted mean cannot be improved by any ordering at all, which is exactly why it is the one worth
+  reporting: it moves only when something real moves.
+- **Bring a prioritisation proposal and a capacity number to the same meeting.** Prioritisation decides
+  who waits. Only the work arriving and the capacity serving it decide how much waiting there is, and at
+  0.78 utilisation one percent more demand costs four and a half percent more waiting.
+- **Count how many times the queue emptied, not how many items it handled.** That is the sample size of
+  any statement about waiting. A quarter of this desk contains 216.6 demands and about forty-eight
+  pile-ups, which is why one quarter of it can read anywhere across a factor of fourteen with nothing
+  having changed.
+- **Check a service target against the handling time alone before blaming the queue.** A fifth of the
+  critical demands here miss a two-day target on handling time by itself. No scheduling can recover that,
+  and a review that spends its time on sequencing will keep missing by that fifth.
 
 ## Running it
 
@@ -327,7 +485,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/60_survival.sql`](sql/60_survival.sql) | The product-limit estimator, its three closed forms, the precision it buys and the median that usually does not exist. |
 | [`sql/70_frailty.sql`](sql/70_frailty.sql) | Two declared classes of subject at an unchanged mean delay, and the mixture's closed form. |
 | [`sql/80_archiving.sql`](sql/80_archiving.sql) | The pipeline review that censors by judgement, what it costs the estimate, and the window at which it cannot. |
-| [`tests/`](tests) | Eleven assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/90_queue.sql`](sql/90_queue.sql) | One server, three priority classes, three disciplines: the waiting each one produces, the total that does not move, the utilisation sweep and what a 180-day slice can say. |
+| [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | The queue derived on paper — Pollaczek–Khinchine, Cobham, and the conservation law the invariance is an instance of. |
+| [`tests/`](tests) | Thirteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -345,7 +505,13 @@ of the draw's own index: no state, no seed, and no dependence on the order rows 
 is swept with arrivals flat. Each isolates one mechanism, and each is asserted as a monotone property
 rather than as a figure.
 
-**And defects are recorded rather than quietly fixed.** Seven so far, in
+**The interval accounts for what is actually independent.** Waves 1 to 4 use four standard errors of a
+binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated inside a busy period, so
+`sd/√n` understates the interval by up to 6.362 times. Every standard error in the queue is clustered on
+busy periods, which are independent because each one starts with an empty system — and the cost in power is
+published rather than hidden.
+
+**And defects are recorded rather than quietly fixed.** Ten so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

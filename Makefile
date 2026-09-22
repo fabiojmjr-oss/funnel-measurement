@@ -23,7 +23,10 @@ $(DUCKDB):
 
 duckdb: $(DUCKDB)
 
-build: $(DUCKDB)
+# The database is a real file target and not a phony one, because wave 5's queue takes a minute to
+# simulate and `make check` and `make report` both need it built. As a phony target it was rebuilt once
+# per invocation, so a CI job that builds, checks and prints paid for three simulations of the same queue.
+$(DB): $(DUCKDB) $(MODELS)
 	@mkdir -p build
 	@rm -f $(DB) $(DB).wal
 	@for model in $(MODELS); do \
@@ -32,6 +35,8 @@ build: $(DUCKDB)
 	done
 	@echo "built $(DB)"
 
+build: $(DB)
+
 # An assertion is a query that returns the rows that BREAK it. Zero rows is a pass, which is why the
 # harness needs no assertion library and no second language.
 #
@@ -39,7 +44,7 @@ build: $(DUCKDB)
 # of this target only looked at the output, so an assertion that failed to PARSE printed nothing to
 # stdout and was reported as a pass. A harness that cannot tell "the claim holds" from "the query never
 # ran" is a harness that reports green for a file it never executed.
-check: build
+check: $(DB)
 	@failed=0; \
 	for assertion in $(CHECKS); do \
 	  out=$$($(DUCKDB) $(DB) -noheader -list -c ".read $$assertion" 2>&1); \
@@ -57,7 +62,7 @@ check: build
 
 check-all: check report
 
-report: build
+report: $(DB)
 	@for query in docs/report_*.sql; do \
 	  printf '\n=== %s\n' "$$query"; \
 	  $(DUCKDB) $(DB) -box -c ".read $$query"; \

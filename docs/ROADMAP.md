@@ -215,6 +215,104 @@ many days the conversion report covers, two numbers that currently live in diffe
    rather than a tolerance. This is the second time in this repository that a population identity was nearly
    asserted on a sample, and both times the sample was right and the assertion was wrong.
 
+## Wave 5 — the queue inside `demanda`, and what prioritising cannot do *(complete)*
+
+Waves 1 to 4 are all about a reading being wrong. This one is not about a reading. A pass rate and a delay
+contain no capacity, so they cannot represent the fact that makes prioritisation a decision: the team works
+on one demand at a time. `sql/90_queue.sql` replaces the delay of a stage with a server — one server, three
+declared classes, 0.78 utilisation, M/G/1 with non-preemptive priority — and `sql/95_queue_closed_form.sql`
+derives every figure of it on paper.
+
+**Result 1 — the work-weighted total waiting is exactly invariant to the priority order.** Not
+approximately, not in expectation, but in every realisation, to twelve decimal places, at every utilisation
+swept. The area under the unfinished-work curve over a busy period is the same under any discipline that
+never idles while work is waiting, and each demand contributes `service·wait + service²/2` to it; the second
+term does not depend on the order. So `sum(service · wait)` cannot either. **Prioritisation is an allocation
+of a fixed pool of waiting, not a reduction of it.** All nine per-class means land on Cobham's formula or on
+Pollaczek and Khinchine's, the worst deviation being 1.293 standard errors.
+
+**Result 2 — and the metric that would say so is not the one on the dashboard.** The mean wait per demand —
+what a service desk reports — rises 18.5% under the order that protects critical demands and falls 24.3%
+under the order that abandons them, because the least urgent class is also the most numerous and the
+cheapest to serve. The reported KPI therefore rewards the discipline that makes `critico` wait 6.7375 days
+instead of 0.6961. Two totals, one invariant and one not, and the operation reports the one that moves for
+reasons that are not improvements.
+
+**Result 3 — what prioritising does buy, and the ceiling it cannot pass.** Critical attainment of a two-day
+target goes from 0.3752 under first-come-first-served to 0.6295 under absolute priority, bought from
+`melhoria`. But 0.7956 is the attainment those same demands would reach *with no queue at all*: the handling
+time alone exceeds two days one time in five. A fifth of the target was never reachable by sequencing at any
+utilisation under any order, which makes it a target written against a process whose own variation forbids
+it — and no amount of prioritisation review will find that out, because prioritisation review does not look
+at the service-time distribution.
+
+**Result 4 — waiting is convex in utilisation with elasticity exactly 1/(1 − u).** One percent more demand
+buys 4.545% more waiting at the declared 0.78 and ten percent at 0.90. By result 1, no discipline changes a
+single row of that sweep. So the only levers on total waiting are the work arriving and the capacity serving
+it, and a prioritisation proposal that produces neither has decided who waits without changing how much
+waiting there is.
+
+**Result 5 — the one error in this repository that has a sign, and it points the wrong way.** The closed
+forms are steady-state limits, and what makes waiting large near capacity is a small number of very long
+busy periods — so as the server fills, the number of *independent* observations in a run collapses while the
+number of demands does not. At 0.98 one busy period holds 0.2121 of the whole 60,000-demand stream. Read at
+three run lengths and three utilisations, all nine readings come out **below** the truth: 0.7048 to 0.9873
+at 0.78, and 0.2442 to 0.8422 at 0.98, where even 60,000 demands reads 16% low. Waves 1, 2 and 4 each found
+an error with no sign; this one has one, and it understates. **The quantity a capacity review most wants —
+how bad does it get when we are nearly full — is the one a finite observation is least able to report, and
+its error is in the direction that feels safe.**
+
+**Result 6 — and a quarter is a very short observation.** Cut the unchanging stream into 277 consecutive
+180-day slices, 216.6 demands each, nothing different between them, and the slice means run from 0.6441 to
+9.3057 days — a factor of 14.4486, attributable to a desk at 0.50 utilisation and a desk at 0.90. The
+interval a reviewer would draw around their own mean with sd/√n is ±0.6925 days; the spread the slices
+actually show is ±5.8781. The interval is 8.4879 times too narrow. The sample size of a statement about
+waiting is not the ticket count but the number of times the queue emptied — a fifth of the ticket count at
+0.78 and a fiftieth at 0.98.
+
+**The busy period is the same object three times.** It makes the invariance of result 1 exact; it makes the
+interval honest, because busy periods are independent by construction and waits inside one are not; and it
+is what made the simulation possible at all, since no ordering of the queue can move the instants at which
+the server goes idle — which turns one 60,000-step recursion into thousands of independent ones that run at
+once. That last claim is checked rather than assumed: every busy period has to end at the same instant under
+every discipline, asserted to machine precision.
+
+One engineering note that is not a defect only because the generator is deterministic. `build` was a phony
+target, so `make check` and `make report` each rebuilt the database — three simulations of the same queue per
+CI run once wave 5 made a build cost a minute rather than two seconds. The database is now a real file
+target. Had any figure depended on wall-clock time or on a library seed, three builds would have meant the
+assertions ran against a different database than the one that was printed.
+
+### Defects found and recorded
+
+8. **Standard errors that assumed a queue's waits are independent observations.** The first version of
+   `queue_readings` published `sd/sqrt(n)`. A queue's waits are strongly positively correlated: a demand
+   that waits a long time arrived behind a pile, and so did the one after it. Treating 60,000 waits as
+   60,000 independent draws understates the interval by between 1.482 and 6.362 times, worst for the class
+   whose waiting is most caused by other demands. The dangerous part is that **nothing failed**: with the
+   naive interval every closed-form comparison still passed, at up to 2.1 standard errors, so the only
+   symptom was arithmetic that should have been exact sitting uncomfortably close to a threshold. The fix is
+   the standard clustered form over busy periods, which are independent because each starts with an empty
+   system. It costs real power and the cost is published: these checks now detect an error of 7.01% to
+   20.23%, where the naive interval claimed as little as 2.57% and was wrong to. **A tolerance that is too
+   tight fails loudly; an interval that is too narrow passes quietly.**
+9. **An assertion that read a stored ratio instead of recomputing it.** `queue_run_length` publishes both a
+   reading and a derivation and also a `ratio_to_derivation` column, and the assertions read the column.
+   Found by deliberately corrupting a reading in a copy of the database and watching the assertion pass,
+   because the stored ratio had not been recomputed. An assertion that reads a derived column is testing
+   that the column was copied across, not that the two numbers agree. Every comparison in
+   `tests/assert_queue_closed_form.sql` now recomputes from the two published columns. This is the fourth
+   time in this repository that an assertion was weaker than it looked, after the harness that never ran the
+   file, the rank that was right in order, and the identity nearly asserted backwards.
+10. **A generator assertion that tested eleven streams the repository does not use.** `assert_generator.sql`
+    checked decile counts, all fifty-five pairs of salts 1 to 11, and lag-one autocorrelation — and the
+    repository draws from salts 7, 101, 613 and 977, and now 1301, 1409 and 1511. Defect 1 in this list is
+    that the uniformity of one stream says nothing about the independence of two; this is the same sentence
+    one level up, and it survived four waves. The twenty-one pairs actually in use are now checked by name:
+    the largest absolute correlation is 0.00739. Nothing was wrong with any published figure, which is
+    precisely why it lasted — **an assertion about the general case is not an assertion about your case, and
+    only the second one is load-bearing.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -232,6 +330,16 @@ many days the conversion report covers, two numbers that currently live in diffe
   purpose rather than acquiring by accident.
 - **No attribution.** Nothing here decides which touch caused which transition. Attribution is a separate
   argument and mixing it in would make every finding above contestable on the wrong grounds.
+- **No second server.** The queue has one. M/G/1 is where the closed forms are, and the whole point of the
+  queue in wave 5 is to be checked against them. Two servers would let the pooling argument in — one shared
+  queue against two specialists — which is a real operating decision and needs a model whose answer key is
+  simulation rather than algebra. That is a different bargain and should be struck on purpose.
+- **No preemption.** A critical demand arriving mid-handling waits for the current one to finish. Preemptive
+  priority has its own closed form and a different prescription, and mixing the two would make it unclear
+  which result belonged to which.
+- **No growth in the queue.** The demand stream of wave 5 is stationary, so wave 1's mechanism is absent
+  from it by construction. That is deliberate: a queue whose arrivals grow has both problems at once and
+  neither can be attributed. Putting them together is a wave, not a parameter.
 
 ## Still open
 
@@ -250,13 +358,25 @@ many days the conversion report covers, two numbers that currently live in diffe
 - **Stages that are not a partition.** Everybody here walks forward one step at a time. Real subjects
   skip stages, go backwards, and re-enter months later. A funnel drawn as a monotone staircase drops all
   three silently, and the count of dropped rows is a number no funnel report contains.
-- **Priority, and the queue inside `demanda`.** The demand funnel has a `priorizada` stage and no notion
-  of a queue discipline: nothing here models what happens to the items that are not prioritised. That is
-  where a prioritisation funnel earns or loses its argument, and it needs a service-rate model rather
-  than a pass rate.
-- **An SLA, and the difference between late and never.** `entregue` and `resolvido` are binary here. An
-  operation distinguishes delivered-on-time from delivered-late from abandoned, and the three have
-  different owners.
+- **An estimator that survives a short run near capacity.** Wave 5 measures the finite-run bias and shows
+  it always reads low. It offers no correction. The honest candidates are a regenerative estimator with a
+  stated relaxation criterion, or batch means with the batch length derived from the utilisation rather than
+  chosen — and either one needs a claim about how long is long enough, which is exactly the claim the result
+  says a finite observation cannot support. Saying which is worth the assumption is the next argument.
+- **Abandonment, and the difference between late and never.** The queue in wave 5 loses nobody: every demand
+  waits as long as it takes. A real intake desk has demands that are withdrawn, escalated out of the queue,
+  or quietly abandoned, and each of those censors the *longest* waits — which would make the reading of a
+  queue's waiting time informatively censored in exactly the sense wave 4 built. `entregue` and `resolvido`
+  are still binary too, and an operation distinguishes delivered-on-time from delivered-late from abandoned.
+- **A service target read off the tickets that closed.** Wave 5 reports attainment over every demand. A real
+  dashboard reports it over the ones that finished inside the window, which is wave 1's reading applied to a
+  queue — and under a priority order the demands still waiting are systematically the low-priority ones, so
+  the censoring is created by the policy rather than by the calendar. The queue here is stationary, which is
+  why that effect is small enough not to be worth publishing yet; it is not small in a growing one.
+- **Priority classes that are chosen rather than declared.** `critico`, `padrao` and `melhoria` are assigned
+  by a coin. A real intake desk decides, the decision is made on partial information, and misclassification
+  moves waiting between classes in a way no discipline can undo afterwards. That is the prioritisation
+  problem a mature company actually has, and it sits on top of everything wave 5 established.
 - **Retention as a survival curve rather than a funnel.** `retencao` is modelled as four stages, which is
   a convenience. Renewal is recurring, so the honest object is a survival function with repeated events,
   and the funnel framing is what makes a churned customer look identical to one who has not renewed yet.

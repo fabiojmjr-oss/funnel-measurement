@@ -32,6 +32,86 @@ WITH expected(what, detail, value) AS (
     ('declared_rate', 'demanda entregue',         0.3529),
     ('ratio',         'demanda entregue',         0.9524),
 
+    -- Wave 5, the queue. Per-class waits under the three disciplines.
+    ('queue wait',      'fifo p1',            2.5461),
+    ('queue wait',      'fifo p2',            2.5624),
+    ('queue wait',      'fifo p3',            2.5632),
+    ('queue wait',      'priority p1',        0.6961),
+    ('queue wait',      'priority p2',        1.1636),
+    ('queue wait',      'priority p3',        4.3583),
+    ('queue wait',      'reversed p1',        6.7375),
+    ('queue wait',      'reversed p2',        2.3953),
+    ('queue wait',      'reversed p3',        0.9051),
+
+    -- The two totals: one moves with the discipline and one does not.
+    ('queue reported mean',  'fifo',          2.5612),
+    ('queue reported mean',  'priority',      3.0358),
+    ('queue reported mean',  'reversed',      1.9382),
+    ('queue reported ratio', 'priority',      1.1853),
+    ('queue reported ratio', 'reversed',      0.7568),
+    ('queue reported ratio', 'priority over reversed', 1.5663),
+    ('queue invariant mean', 'fifo',          2.5540477739),
+    ('queue invariant mean', 'priority',      2.5540477739),
+    ('queue invariant mean', 'reversed',      2.5540477739),
+
+    -- The derivations the simulation is checked against.
+    ('queue derived wait', 'fifo',            2.5868),
+    ('queue derived wait', 'priority p1',     0.6705),
+    ('queue derived wait', 'priority p2',     1.1473),
+    ('queue derived wait', 'priority p3',     4.4261),
+    ('queue derived wait', 'reversed p1',     6.9737),
+    ('queue derived wait', 'reversed p2',     2.4147),
+    ('queue derived wait', 'reversed p3',     0.8957),
+    ('queue worst deviation', 'standard errors', 1.293),
+
+    -- Service levels, and the ceiling no ordering can pass.
+    ('queue sla met',  'fifo p1',             0.3752),
+    ('queue sla met',  'fifo p3',             0.8486),
+    ('queue sla met',  'priority p1',         0.6295),
+    ('queue sla met',  'priority p3',         0.7264),
+    ('queue sla met',  'reversed p1',         0.3207),
+    ('queue sla met',  'reversed p3',         0.9925),
+    ('queue sla ceiling', 'p1',               0.7956),
+
+    -- The utilisation sweep and its elasticity.
+    ('queue sweep wait', '0.40',              0.4925),
+    ('queue sweep wait', '0.50',              0.7408),
+    ('queue sweep wait', '0.78',              2.5957),
+    ('queue sweep wait', '0.90',              6.8417),
+    ('queue sweep wait', '0.98',             24.2435),
+    ('queue elasticity', '0.78',              4.545),
+
+    -- Run length against the truth: nine readings, all of them low.
+    ('queue run length ratio', '0.78 at 5000',   0.7048),
+    ('queue run length ratio', '0.78 at 20000',  0.9847),
+    ('queue run length ratio', '0.78 at 60000',  0.9873),
+    ('queue run length ratio', '0.95 at 5000',   0.4289),
+    ('queue run length ratio', '0.95 at 20000',  0.9367),
+    ('queue run length ratio', '0.95 at 60000',  0.9641),
+    ('queue run length ratio', '0.98 at 5000',   0.2442),
+    ('queue run length ratio', '0.98 at 20000',  0.6238),
+    ('queue run length ratio', '0.98 at 60000',  0.8422),
+    ('queue biggest period share', '0.98 at 60000', 0.2121),
+    ('queue biggest period',       '0.98 at 60000', 12724.0),
+
+    -- What one 180-day slice can say.
+    ('queue slices',              'count',       277.0),
+    ('queue demands per slice',   'mean',        216.6),
+    ('queue true mean wait',      'slices',        2.5318),
+    ('queue lowest slice',        'mean wait',     0.6441),
+    ('queue highest slice',       'mean wait',     9.3057),
+    ('queue widest pair',         'ratio',        14.4486),
+    ('queue naive half width',    'days',          0.6925),
+    ('queue honest half width',   'days',          5.8781),
+    ('queue interval understated','times',         8.4879),
+
+    -- And the interval itself.
+    ('queue standard error inflation', 'lowest',  1.482),
+    ('queue standard error inflation', 'highest', 6.362),
+    ('queue detectable error', 'clustered lowest',  0.0701),
+    ('queue detectable error', 'clustered highest', 0.2023),
+    ('queue detectable error', 'naive lowest',      0.0257),
+
     -- The sales funnel shown stage by stage.
     ('window_rate',   'venda qualificado',        0.4267),
     ('cohort_rate',   'venda qualificado',        0.4464),
@@ -336,6 +416,68 @@ measured(what, detail, value) AS (
         count(*) FILTER (WHERE ratio > 1.0 + 1e-9)::DOUBLE FROM sweep_archiving WHERE stale_days < 30
     UNION ALL SELECT 'sweep points below one inside', 'count',
         count(*) FILTER (WHERE ratio < 1.0 - 1e-9)::DOUBLE FROM sweep_archiving WHERE stale_days < 30
+
+    UNION ALL SELECT 'queue wait', discipline || ' ' || priority, round(mean_wait, 4) FROM queue_readings
+    UNION ALL SELECT 'queue sla met', discipline || ' ' || priority, round(sla_met, 4) FROM queue_readings
+    UNION ALL SELECT 'queue sla ceiling', priority, round(sla_met_without_waiting, 4)
+        FROM queue_readings WHERE discipline = 'fifo'
+    UNION ALL SELECT 'queue standard error inflation', 'lowest', round(min(standard_error_inflation), 3)
+        FROM queue_readings
+    UNION ALL SELECT 'queue standard error inflation', 'highest', round(max(standard_error_inflation), 3)
+        FROM queue_readings
+
+    UNION ALL SELECT 'queue reported mean', discipline, round(mean_wait_per_demand, 4) FROM queue_totals
+    UNION ALL SELECT 'queue invariant mean', discipline, round(mean_wait_per_day_of_work, 10)
+        FROM queue_totals
+    UNION ALL SELECT 'queue reported ratio', discipline, round(reported_ratio, 4)
+        FROM queue_conservation WHERE discipline <> 'fifo'
+    UNION ALL SELECT 'queue reported ratio', 'priority over reversed',
+        round((SELECT mean_wait_per_demand FROM queue_totals WHERE discipline = 'priority')
+              / (SELECT mean_wait_per_demand FROM queue_totals WHERE discipline = 'reversed'), 4)
+
+    UNION ALL SELECT 'queue derived wait', 'fifo', round(max(derived_wait), 4)
+        FROM queue_closed_form WHERE discipline = 'fifo'
+    UNION ALL SELECT 'queue derived wait', discipline || ' ' || priority, round(derived_wait, 4)
+        FROM queue_closed_form WHERE discipline <> 'fifo'
+    UNION ALL SELECT 'queue worst deviation', 'standard errors',
+        round(max(abs((simulated_wait - derived_wait) / wait_standard_error)), 3) FROM queue_closed_form
+
+    UNION ALL SELECT 'queue detectable error', 'clustered lowest',
+        round(min(4.0 * q.wait_standard_error / c.derived_wait), 4)
+        FROM queue_readings q JOIN queue_closed_form c
+          ON c.discipline = q.discipline AND c.priority = q.priority
+    UNION ALL SELECT 'queue detectable error', 'clustered highest',
+        round(max(4.0 * q.wait_standard_error / c.derived_wait), 4)
+        FROM queue_readings q JOIN queue_closed_form c
+          ON c.discipline = q.discipline AND c.priority = q.priority
+    UNION ALL SELECT 'queue detectable error', 'naive lowest',
+        round(min(4.0 * q.naive_standard_error / c.derived_wait), 4)
+        FROM queue_readings q JOIN queue_closed_form c
+          ON c.discipline = q.discipline AND c.priority = q.priority
+
+    UNION ALL SELECT 'queue sweep wait', utilisation::VARCHAR, round(mean_wait_per_day_of_work, 4)
+        FROM queue_sweep_closed_form WHERE discipline = 'fifo'
+    UNION ALL SELECT 'queue elasticity', utilisation::VARCHAR, round(elasticity_of_waiting_in_demand, 3)
+        FROM queue_sweep_closed_form WHERE discipline = 'fifo'
+
+    UNION ALL SELECT 'queue run length ratio', utilisation || ' at ' || run_length,
+        round(mean_wait_per_day_of_work / derived_wait, 4) FROM queue_run_length
+    UNION ALL SELECT 'queue biggest period share', utilisation || ' at ' || run_length,
+        round(biggest_share_of_run, 4) FROM queue_run_length
+    UNION ALL SELECT 'queue biggest period', utilisation || ' at ' || run_length,
+        biggest_busy_period::DOUBLE FROM queue_run_length
+
+    UNION ALL SELECT 'queue slices', 'count', slices::DOUBLE FROM queue_measurability
+    UNION ALL SELECT 'queue demands per slice', 'mean', round(mean_demands_per_slice, 1)
+        FROM queue_measurability
+    UNION ALL SELECT 'queue true mean wait', 'slices', round(mean_of_slice_means, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue lowest slice', 'mean wait', round(lowest_slice_mean, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue highest slice', 'mean wait', round(highest_slice_mean, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue widest pair', 'ratio', round(widest_pair_of_readings, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue naive half width', 'days', round(naive_half_width, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue honest half width', 'days', round(honest_half_width, 4) FROM queue_measurability
+    UNION ALL SELECT 'queue interval understated', 'times', round(interval_understated_by, 4)
+        FROM queue_measurability
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

@@ -136,3 +136,49 @@ CREATE OR REPLACE MACRO u01(counter, salt) AS
 CREATE OR REPLACE MACRO passes(counter, salt, rate) AS (u01(counter, salt) < rate);
 CREATE OR REPLACE MACRO lag_days(counter, salt, mean_days) AS
     CASE WHEN mean_days <= 0 THEN 0.0 ELSE -mean_days * ln(1.0 - u01(counter, salt)) END;
+
+-- The queue inside `demanda`, which is the one funnel above that has a `priorizada` stage and no notion
+-- of what prioritising costs.
+--
+-- Stages 1 to 5 of `demanda` model a demand walking forward with a pass rate and a delay, and that
+-- framing cannot answer the question a demand-intake review actually argues about: the team can only
+-- work on one thing at a time, so putting this item first puts another item second. A pass rate has no
+-- capacity in it. What follows replaces the delay of stage 3 with a server.
+--
+-- One server, three declared priority classes, exponential service. That is M/G/1 with non-preemptive
+-- priority, which is chosen for one reason: it is the largest model of a queue whose mean waiting time
+-- is known on paper, per class, for any priority order. Every figure this repository publishes about
+-- the queue is checked against that paper.
+--
+--   rho_k = share_k * arrivals_daily * service_mean_days
+--         = 0.15, 0.27, 0.36   and the server is busy 0.78 of the time.
+CREATE OR REPLACE TABLE queue_classes AS
+SELECT * FROM (VALUES
+    ('p1', 1, 'critico',  'Critical incident', 'Incidente critico',   0.10, 1.25, 2.0),
+    ('p2', 2, 'padrao',   'Standard request',  'Solicitacao padrao',  0.30, 0.75, 4.0),
+    ('p3', 3, 'melhoria', 'Improvement',       'Melhoria',            0.60, 0.50, 6.0)
+) AS t(priority, rnk, label, label_en, label_pt, share, service_mean_days, sla_days);
+
+-- The two priority orders compared against first-come-first-served. `reversed` is not a straw man: it
+-- is what a team does when it clears the quick items to make the backlog count fall, and because the
+-- improvement class is also the cheapest to serve it is the order that minimises the average wait.
+CREATE OR REPLACE TABLE queue_disciplines AS
+SELECT * FROM (VALUES
+    ('priority', 'p1', 1), ('priority', 'p2', 2), ('priority', 'p3', 3),
+    ('reversed', 'p1', 3), ('reversed', 'p2', 2), ('reversed', 'p3', 1)
+) AS t(discipline, priority, rnk);
+
+-- How long the queue is run, and why it is run for so long.
+--
+-- 60,000 demands at 1.2 a day is roughly 137 years, which is not a quarter and is not pretending to be
+-- one. A waiting time at 78% utilisation has a standard deviation larger than its mean, so the sample
+-- needed to pin the mean down to a few percent is far larger than any real operation ever observes.
+-- That gap is measured rather than waved at: `queue_measurability` reads the same stream in 180-day
+-- slices and reports what a quarterly review could and could not have concluded from one.
+CREATE OR REPLACE TABLE queue_params AS
+SELECT * FROM (VALUES
+    ('queue_arrivals_daily',  1.2, 'Demands arriving per day, Poisson, pooled across the three classes.'),
+    ('queue_jobs',        60000.0, 'Demands generated. Chosen for the width of the interval on the closed-form checks, not for realism.'),
+    ('queue_sweep_jobs',  20000.0, 'The prefix of that stream the utilisation sweep is run on. The sweep is comparative statics, so it is spent on more utilisations rather than on tighter intervals.'),
+    ('queue_slice_days',    180.0, 'The length of the reporting slice a quarterly review would see.')
+) AS t(key, value, note);

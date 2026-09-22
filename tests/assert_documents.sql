@@ -27,7 +27,8 @@ words(n, english, portuguese) AS (
     VALUES (1, 'One so far', 'Um até aqui'), (2, 'Two so far', 'Dois até aqui'),
            (3, 'Three so far', 'Três até aqui'), (4, 'Four so far', 'Quatro até aqui'),
            (5, 'Five so far', 'Cinco até aqui'), (6, 'Six so far', 'Seis até aqui'),
-           (7, 'Seven so far', 'Sete até aqui'), (8, 'Eight so far', 'Oito até aqui')
+           (7, 'Seven so far', 'Sete até aqui'), (8, 'Eight so far', 'Oito até aqui'),
+           (9, 'Nine so far', 'Nove até aqui'), (10, 'Ten so far', 'Dez até aqui')
 ),
 figures(figure) AS (
     VALUES ('1.9826'), ('1.6988'), ('0.9522'), ('0.9907'), ('0.9218'), ('0.9524'),
@@ -50,7 +51,19 @@ figures(figure) AS (
            ('0.357143'), ('1.38'), ('17.2008'), ('14.5152'), ('0.8439'), ('9.7738'), ('8.8153'),
            ('0.9019'), ('1.9540'), ('1.8483'), ('0.9459'), ('0.2006'), ('0.2016'), ('1.0047'),
            ('15.6'), ('75.55'), ('29.87'), ('2.529'), ('1.0450'), ('0.9372'), ('1.0276'),
-           ('0.9700'), ('1.0036'), ('1.0082'), ('0.9986')
+           ('0.9700'), ('1.0036'), ('1.0082'), ('0.9986'),
+           -- Wave 5, the queue.
+           ('2.5461'), ('2.5624'), ('2.5632'), ('2.5612'),
+           ('0.6961'), ('1.1636'), ('4.3583'), ('3.0358'), ('1.1853'),
+           ('6.7375'), ('2.3953'), ('0.9051'), ('1.9382'), ('0.7568'), ('1.5663'),
+           ('2.5868'), ('0.6705'), ('1.1473'), ('4.4261'), ('6.9737'), ('2.4147'), ('0.8957'),
+           ('1.293'), ('2.5540477739'),
+           ('0.3752'), ('0.8486'), ('0.6295'), ('0.7264'), ('0.3207'), ('0.9925'), ('0.7956'),
+           ('0.4925'), ('0.7408'), ('2.5957'), ('6.8417'), ('24.2435'), ('4.545'),
+           ('0.2121'), ('0.7048'), ('0.9847'), ('0.9873'), ('0.4289'), ('0.9367'), ('0.9641'),
+           ('0.2442'), ('0.6238'), ('0.8422'),
+           ('216.6'), ('2.5318'), ('0.6441'), ('9.3057'), ('14.4486'), ('0.6925'), ('5.8781'),
+           ('8.4879'), ('1.482'), ('6.362'), ('7.01'), ('20.23'), ('2.57')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -67,6 +80,23 @@ FROM glob('sql/*.sql'), english WHERE NOT contains(english.content, file)
 UNION ALL
 SELECT 'a sql model is not linked from the Portuguese README', file
 FROM glob('sql/*.sql'), portuguese WHERE NOT contains(portuguese.content, file)
+
+UNION ALL
+-- Wave 5 invents a queue as well as a funnel, so its class names are held to the same rule.
+SELECT 'a declared priority class is not named in the disclaimer', priority
+FROM queue_classes, disclaimer WHERE NOT contains(disclaimer.content, priority)
+UNION ALL
+SELECT 'a declared priority class label is not named in the disclaimer', label
+FROM queue_classes, disclaimer WHERE NOT contains(disclaimer.content, label)
+UNION ALL
+-- And every discipline the READMEs argue about has to be one the parameters actually declare.
+SELECT 'a declared queue discipline is not named in the English README', discipline
+FROM (SELECT DISTINCT discipline FROM queue_disciplines), english
+WHERE NOT contains(english.content, discipline)
+UNION ALL
+SELECT 'a declared queue discipline is not named in the Portuguese README', discipline
+FROM (SELECT DISTINCT discipline FROM queue_disciplines), portuguese
+WHERE NOT contains(portuguese.content, discipline)
 
 UNION ALL
 -- Every invented stage name has to be declared as invented, or the disclaimer is incomplete.
@@ -107,19 +137,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 9 AND NOT contains(english.content, 'Nine model files')
+WHERE n = 11 AND NOT contains(english.content, 'Eleven model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 11 AND NOT contains(english.content, 'eleven assertion files')
+WHERE n = 13 AND NOT contains(english.content, 'thirteen assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 9 AND NOT contains(portuguese.content, 'Nove arquivos de modelo')
+WHERE n = 11 AND NOT contains(portuguese.content, 'Onze arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 11 AND NOT contains(portuguese.content, 'onze de asserção')
+WHERE n = 13 AND NOT contains(portuguese.content, 'treze de asserção')
 
 UNION ALL
 SELECT 'a placeholder token survived in ' || name, token

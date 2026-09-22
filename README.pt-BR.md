@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Nove arquivos de modelo, onze de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Onze arquivos de modelo, treze de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -295,6 +295,151 @@ Dentro do horizonte, só seis de trinta e seis pontos são. Então a regra é n�
 números que hoje moram em documentos diferentes: quanto tempo um registro fica parado antes de a revisão
 fechá-lo, e quantos dias o relatório de conversão cobre.
 
+## E o funil que não é funil nenhum: a fila dentro de `demanda`
+
+Toda onda acima trata de uma *leitura* errada. Esta não. `demanda` tem uma etapa chamada `priorizada`, e
+nada numa taxa de passagem ou num atraso contém o fato que torna priorizar uma decisão: **o time trabalha
+numa demanda por vez, então colocar este item em primeiro coloca outro item em segundo.** Um atraso não é
+propriedade da demanda. É, em boa parte, o tempo que a demanda passa atrás de outras demandas.
+
+Então [`sql/90_queue.sql`](sql/90_queue.sql) troca o atraso de uma etapa por um servidor. Um servidor, três
+classes declaradas — 10% `critico` com 1,25 dia de atendimento, 30% `padrao` com 0,75, 60% `melhoria` com
+0,50 — chegando por Poisson a 1,2 por dia, o que deixa o servidor ocupado **0,78** do tempo. Isso é M/G/1
+com prioridade não preemptiva, escolhido porque seu tempo médio de espera é conhecido no papel para cada
+classe sob qualquer ordem de prioridade, de modo que toda figura abaixo é conferida contra aritmética feita
+separadamente.
+
+Três ordens são comparadas: primeiro a chegar primeiro a ser servido, `priority` (crítico primeiro) e
+`reversed` — que não é espantalho, porque limpar os itens rápidos para fazer a contagem de backlog cair é o
+que times de fato fazem sob pressão, e `melhoria` é ao mesmo tempo a classe menos urgente e a mais barata
+de servir.
+
+| Ordem | `critico` | `padrao` | `melhoria` | **espera média por demanda** |
+| --- | --- | --- | --- | --- |
+| primeiro a chegar | 2,5461 d | 2,5624 d | 2,5632 d | **2,5612 d** |
+| `priority` | **0,6961 d** | 1,1636 d | **4,3583 d** | **3,0358 d** (1,1853×) |
+| `reversed` | **6,7375 d** | 2,3953 d | **0,9051 d** | **1,9382 d** (0,7568×) |
+
+Cada um desses nove números cai sobre sua forma fechada — a fórmula de Cobham para as ordens de prioridade,
+a de Pollaczek e Khinchine para primeiro a chegar — sendo o pior desvio de **1,293** erro padrão. As
+derivações são 0,6705, 1,1473 e 4,4261 dias sob `priority`, 6,9737, 2,4147 e 0,8957 sob `reversed`, e
+2,5868 para as três classes sob primeiro a chegar, que não sabe que as classes existem.
+
+### A espera total não se move. Em nada.
+
+A última coluna daquela tabela é o número que uma central de atendimento reporta, e ele oscila por um fator
+de **1,5663** entre as duas ordens de prioridade. Agora pondere cada demanda pelo tempo de atendimento que
+ela traz, em vez de contá-la uma vez:
+
+| Ordem | espera média reportada | espera média por dia de trabalho |
+| --- | --- | --- |
+| primeiro a chegar | 2,5612 d | **2,5540477739** d |
+| `priority` | 3,0358 d | **2,5540477739** d |
+| `reversed` | 1,9382 d | **2,5540477739** d |
+
+Isso não é coincidência nem aproximação de regime estacionário. A área sob a curva de trabalho não
+concluído ao longo de um período ocupado é a mesma sob toda disciplina que nunca fica ociosa havendo
+trabalho à espera, e cada demanda contribui `atendimento × espera + atendimento² / 2` para ela. O segundo
+termo não depende da ordem, então `sum(atendimento × espera)` **não pode** depender da ordem — não
+aproximadamente, não em expectativa, mas em cada realização. É asseverado a 1e-12 relativo e vale até a
+décima segunda casa decimal em toda utilização varrida.
+
+> **Priorização não é melhoria. É alocação.** O estoque de espera é fixado por quanto trabalho chega e
+> quão rápido o time é. Uma ordem de prioridade decide quem o carrega, e nada além disso.
+
+E a métrica que diria isso a um gestor não é a que está no painel. A espera média reportada sobe **18,5%**
+sob a ordem que protege as demandas críticas e cai **24,3%** sob a ordem que as abandona, porque `melhoria`
+é ao mesmo tempo a classe mais numerosa e a mais barata de servir. **O KPI da central premia a disciplina
+que faz demandas críticas esperarem 6,7375 dias.**
+
+### O que priorizar compra de fato, e o teto que não pode passar
+
+| Ordem | `critico` cumpre a meta de 2 dias | `melhoria` cumpre a meta de 6 dias |
+| --- | --- | --- |
+| primeiro a chegar | 0,3752 | 0,8486 |
+| `priority` | **0,6295** | 0,7264 |
+| `reversed` | 0,3207 | 0,9925 |
+
+Priorizar vale 25 pontos reais de cumprimento no crítico, e eles são comprados de `melhoria`. Mas
+**0,7956** é a fração de demandas críticas que cumpriria uma meta de dois dias *sem fila nenhuma* — o
+atendimento por si só passa de dois dias uma vez em cada cinco. Ou seja: um quinto daquela meta nunca foi
+alcançável por sequenciamento, em nenhuma utilização, sob nenhuma ordem. Ordenar a fila fechou 60% da lacuna
+que ordenar poderia fechar, e o resto é uma meta escrita contra um processo cuja própria variação a proíbe.
+
+### Um por cento mais de demanda
+
+A espera é convexa na utilização, e a elasticidade é exatamente `1 / (1 − u)`:
+
+| Utilização | espera média por dia de trabalho | % de espera por % de demanda |
+| --- | --- | --- |
+| 0,40 | 0,4925 d | 1,667 |
+| 0,50 | 0,7408 d | 2,000 |
+| 0,78 | 2,5957 d | **4,545** |
+| 0,90 | 6,8417 d | 10,000 |
+| 0,98 | 24,2435 d | 50,000 |
+
+Na 0,78 declarada, um por cento mais de demanda compra quatro e meio por cento mais de espera; em 0,90
+compra dez. Pela invariância acima, **nenhuma disciplina muda uma única linha daquela tabela.** As únicas
+alavancas sobre a espera total são o volume de trabalho que chega e a capacidade que o atende, e uma revisão
+de priorização que não produz nenhum dos dois decidiu quem espera sem mudar quanta espera existe.
+
+### E o único erro deste repositório que tem sinal
+
+As ondas 1, 2 e 4 acharam, cada uma, um erro que muda de sinal com um parâmetro que ninguém reporta, de modo
+que nenhuma correção mental existe. Este é diferente, e pior. As formas fechadas acima são limites de regime
+estacionário, e o que torna a espera grande perto da capacidade é um número pequeno de períodos ocupados
+muito longos — então, à medida que o servidor enche, o número de observações *independentes* numa corrida
+colapsa mesmo que o número de demandas não colapse. Em 0,98, um período ocupado contém **0,2121** deste
+fluxo inteiro de 60.000 demandas: 12.724 demandas numa única pilha ininterrupta.
+
+| Utilização | 5.000 demandas | 20.000 demandas | 60.000 demandas |
+| --- | --- | --- | --- |
+| 0,78 | 0,7048 | 0,9847 | 0,9873 |
+| 0,95 | 0,4289 | 0,9367 | 0,9641 |
+| 0,98 | 0,2442 | 0,6238 | **0,8422** |
+
+Nove leituras de nove estão **abaixo** da verdade, e perto da capacidade mesmo 60.000 demandas leem 16%
+menos. Uma observação curta de uma fila não se dispersa em torno da resposta; ela subestima, porque os
+acúmulos longos que carregam a média são justamente os que uma janela curta tem menos chance de conter. **A
+grandeza que uma revisão de capacidade mais quer — quão ruim fica quando estamos quase cheios — é a que uma
+observação finita é menos capaz de reportar, e o erro está na direção que dá sensação de segurança.**
+
+O que não é hipotético, porque uma revisão trimestral é uma observação muito curta. Corte este fluxo
+imutável em fatias consecutivas de 180 dias — mesma taxa de chegada, mesmos tempos de atendimento, mesma
+disciplina, mesma utilização, nada diferente entre elas — e leia cada uma como uma revisão leria:
+
+| | |
+| --- | --- |
+| Fatias de 180 dias | 277, com média de 216,6 demandas cada |
+| Espera média verdadeira | 2,5318 d |
+| A fatia mais baixa lê | **0,6441 d** — atribuível a uma mesa em 0,50 de utilização |
+| A fatia mais alta lê | **9,3057 d** — atribuível a uma mesa em 0,90 de utilização |
+| Mais alta sobre mais baixa | **14,4486×** |
+| Intervalo que um revisor desenharia (4 × sd/√n) | ± 0,6925 d |
+| Intervalo que as fatias de fato mostram | ± 5,8781 d |
+| Subestimado por | **8,4879×** |
+
+Nada mudou. A mesma mesa, lida um trimestre por vez, reporta uma espera média em qualquer ponto de um fator
+de catorze, e o intervalo de confiança que um revisor desenharia em torno dela é oito vezes estreito demais.
+
+> **Antes de ler uma mudança no tempo de espera de uma fila como mudança na fila, pergunte quantos acúmulos
+> independentes a leitura contém.** Não quantos tíquetes — quantas vezes a fila esvaziou. Em 0,78 isso é um
+> quinto da contagem de tíquetes; em 0,98 é um cinquenta avos.
+
+O intervalo é estreito demais por uma razão que importa além daquela tabela, e é por isso que todo erro
+padrão desta onda é agrupado. Esperas numa fila não são observações independentes: uma demanda que espera
+muito chegou atrás de uma pilha, e a seguinte também. O que *é* independente é o período ocupado — cada um
+começa com o sistema vazio e não carrega memória do anterior. Tratar 60.000 esperas como 60.000 sorteios
+independentes subestima o intervalo por entre **1,482** e **6,362** vezes, dependendo da classe e da ordem,
+pior para a classe cuja espera é mais causada por outras demandas. O custo é honesto: estas conferências de
+forma fechada detectam um erro de **7,01%** a **20,23%** e não menor, onde o intervalo ingênuo teria
+reivindicado tão pouco quanto **2,57%** e estaria errado.
+
+Esse período ocupado é o mesmo objeto três vezes. Ele torna a invariância exata, torna o intervalo honesto,
+e é o que permitiu simular as duas ordens de prioridade: uma recursão de 60.000 passos vira milhares de
+recursões independentes que rodam ao mesmo tempo, precisamente *porque* nenhuma ordenação da fila pode mover
+os instantes em que o servidor fica ocioso.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -307,6 +452,21 @@ fechá-lo, e quantos dias o relatório de conversão cobre.
 - **Pergunte o que as entradas fizeram.** Antes de ler qualquer movimento numa taxa de funil como
   comportamento, olhe se o topo do funil cresceu. Nesta conta essa única pergunta explica um fator de
   dois.
+- **Pondere a espera pelo trabalho que ela carrega, não pela contagem de tíquetes.** A média ponderada por
+  tíquete pode ser melhorada servindo os itens baratos primeiro, e fazer isso faz os críticos esperarem
+  mais. A média ponderada por trabalho não pode ser melhorada por ordenação nenhuma, e é exatamente por
+  isso que é a que vale reportar: ela só se move quando algo real se move.
+- **Leve uma proposta de priorização e um número de capacidade à mesma reunião.** Priorização decide quem
+  espera. Só o trabalho que chega e a capacidade que o atende decidem quanta espera existe, e em 0,78 de
+  utilização um por cento mais de demanda custa quatro e meio por cento mais de espera.
+- **Conte quantas vezes a fila esvaziou, não quantos itens ela tratou.** Esse é o tamanho de amostra de
+  qualquer afirmação sobre espera. Um trimestre desta mesa contém 216,6 demandas e cerca de quarenta e oito
+  acúmulos, e é por isso que um trimestre dela pode ler em qualquer ponto de um fator de catorze sem que
+  nada tenha mudado.
+- **Confira uma meta de serviço contra o tempo de atendimento sozinho antes de culpar a fila.** Um quinto
+  das demandas críticas aqui perde uma meta de dois dias pelo tempo de atendimento em si. Sequenciamento
+  nenhum recupera isso, e uma revisão que gasta seu tempo em ordenação vai continuar perdendo por aquele
+  quinto.
 
 ## Rodando
 
@@ -331,7 +491,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/60_survival.sql`](sql/60_survival.sql) | O estimador produto-limite, suas três formas fechadas, a precisão que ele compra e a mediana que geralmente não existe. |
 | [`sql/70_frailty.sql`](sql/70_frailty.sql) | Duas classes declaradas de sujeito com atraso médio inalterado, e a forma fechada da mistura. |
 | [`sql/80_archiving.sql`](sql/80_archiving.sql) | A revisão de pipeline que censura por julgamento, o que ela custa à estimativa, e a janela em que não pode. |
-| [`tests/`](tests) | Onze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/90_queue.sql`](sql/90_queue.sql) | Um servidor, três classes de prioridade, três disciplinas: a espera que cada uma produz, o total que não se move, a varredura de utilização e o que uma fatia de 180 dias consegue dizer. |
+| [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | A fila derivada no papel — Pollaczek–Khinchine, Cobham, e a lei de conservação de que a invariância é um caso. |
+| [`tests/`](tests) | Treze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -350,7 +512,13 @@ avaliadas.
 atraso é varrido com as entradas estáveis. Cada um isola um mecanismo, e cada um é afirmado como
 propriedade monótona em vez de cifra.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Sete até aqui, em
+**O intervalo considera o que é de fato independente.** As ondas 1 a 4 usam quatro erros padrão de uma
+binomial ou de uma média amostral. A onda 5 não pode: as esperas de uma fila são correlacionadas dentro de
+um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes. Todo erro padrão da fila é
+agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
+poder de detecção é publicado em vez de escondido.
+
+**E defeitos são registrados em vez de corrigidos em silêncio.** Dez até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma
