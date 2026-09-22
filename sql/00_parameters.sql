@@ -182,3 +182,57 @@ SELECT * FROM (VALUES
     ('queue_sweep_jobs',  20000.0, 'The prefix of that stream the utilisation sweep is run on. The sweep is comparative statics, so it is spent on more utilisations rather than on tighter intervals.'),
     ('queue_slice_days',    180.0, 'The length of the reporting slice a quarterly review would see.')
 ) AS t(key, value, note);
+
+-- The triage decision, which wave 5 did not have.
+--
+-- In wave 5 the class is a property of the demand and the queue serves it perfectly. No intake desk works
+-- that way. Somebody classifies the demand on partial information, at the moment it arrives, before the
+-- thing that makes it urgent is known - and the queue then serves the **label**, not the class.
+--
+-- So there are two classes per demand from here on: the one that determines how much its delay costs, and
+-- the one written on the ticket. The matrix below is the second given the first. The two error directions
+-- are not the same mistake and the wave is about how differently they behave:
+--
+--   * under-recognition - a genuinely critical demand that arrives looking routine and goes to the bottom
+--     of the queue. Rare, and catastrophic for that demand.
+--   * over-escalation - a routine demand labelled critical because whoever raised it said it was urgent.
+--     Common, and it does not hurt that demand at all. It raises the utilisation of the top class, which
+--     is the only thing protecting the genuinely critical ones.
+--
+-- The rows are read as: of the demands whose true class is `true_priority`, this share is labelled
+-- `assigned_priority`. Each row sums to one, which tests/assert_triage.sql checks rather than assumes.
+CREATE OR REPLACE TABLE queue_triage AS
+SELECT * FROM (VALUES
+    ('p1', 'p1', 0.75), ('p1', 'p2', 0.20), ('p1', 'p3', 0.05),
+    ('p2', 'p1', 0.15), ('p2', 'p2', 0.75), ('p2', 'p3', 0.10),
+    ('p3', 'p1', 0.08), ('p3', 'p2', 0.22), ('p3', 'p3', 0.70)
+) AS t(true_priority, assigned_priority, probability);
+
+-- What a day of delay costs, per class, as an exchange rate rather than as money.
+--
+-- Wave 5 established that the work-weighted total waiting cannot be moved by any ordering, which means
+-- the only thing an ordering can do is decide who waits. Deciding *well* requires saying what waiting
+-- costs, and there is no honest way to avoid that: a priority order is a statement about relative cost
+-- whether or not anybody writes the numbers down.
+--
+-- The weight below is dimensionless on purpose: it is how many days of delay on a `melhoria` one day of
+-- delay on this class is worth. No currency appears anywhere in this repository and none is needed - the
+-- rule that minimises weighted waiting depends only on ratios.
+--
+-- The declared 10 : 3 : 1 is deliberately conventional. The finding of sql/a5_urgency.sql is that the
+-- order these weights imply is **not** the order they are written in, and that the correction has nothing
+-- to do with urgency.
+CREATE OR REPLACE TABLE queue_urgency AS
+SELECT * FROM (VALUES
+    ('p1', 10.0), ('p2', 3.0), ('p3', 1.0)
+) AS t(priority, urgency_weight);
+
+-- The third discipline: serve the label the triage desk wrote, under the same critical-first ranking.
+-- Wave 5 claimed that adding a discipline was a row in this file and no change to the recursion. This is
+-- that claim being tested - the ranking is identical to `priority`, and only the labelling differs.
+CREATE OR REPLACE TABLE queue_label_sources AS
+SELECT * FROM (VALUES
+    ('priority', 'true'),
+    ('reversed', 'true'),
+    ('triaged',  'assigned')
+) AS t(discipline, label_source);

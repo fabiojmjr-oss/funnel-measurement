@@ -313,6 +313,82 @@ assertions ran against a different database than the one that was printed.
     precisely why it lasted — **an assertion about the general case is not an assertion about your case, and
     only the second one is load-bearing.**
 
+## Wave 6 — the class is decided, not known *(complete)*
+
+Wave 5's queue serves the class. No intake desk can, because the class is not written on the demand:
+somebody decides it at the counter, with less information than the demand has, before the thing that makes
+it urgent is known. `sql/a0_triage.sql` adds a declared confusion matrix between the true class and the
+label and re-runs the same queue on the labels; `sql/a5_urgency.sql` derives all of it, and then asks the
+question wave 5 left open — given that no order can change the total waiting, which order should it be.
+
+**Result 1 — the label is not the class, and the arithmetic makes that inevitable.** The critical class is
+10% of demands; the critical *label* is 16.81% of them, and 4547 of its 10084 tickets came from the critical
+class against 5537 from the other two. A small share of two classes that are three and six times larger is
+larger than a large share of the class the label names. No indiscipline is required, and no policy statement
+would reveal it.
+
+**Result 2 — imperfect triage costs the critical class 49.2% of its waiting, and the cost is a transfer.**
+`critico` goes from 0.6961 to 1.0383 days and its two-day attainment from 0.6295 to 0.5941; `padrao` loses
+41.0%; `melhoria` *gains* 11.2%, reading 0.8883 of its ideal. Wave 5's invariance survives the relabelling
+exactly, the ratio of the two work-weighted totals coming out 1.000000000000 — because relabelling a queue cannot change how much
+work is in it. **A triage error is not waste. It is a transfer, and it is paid to whoever the wrong label
+sent to the front.** Both halves of the derivation are checked: Cobham on the labels, whose service
+distributions are now mixtures, and then the conditional average over labels that gives a true class's wait.
+The worst deviation of the six comparisons is 0.867 clustered standard errors.
+
+**Result 3 — the reported metric ranks every possible priority order exactly backwards.** The mean wait per
+demand under perfect critical-first priority is 3.0358 days; under this triage desk it is 2.9201, so the
+number a service desk publishes *improves* as the triage desk degrades. Worse, enumerate all six orders three
+classes can be served in, derive each, and sort by what they cost at the declared urgency: 5.2657, 5.6603,
+7.5822, 8.6627, 10.8461, 11.7533 — and the reported mean wait falls monotonically along that list, 3.0691
+down to 1.9622. Not correlated with the truth and not uncorrelated: **exactly reversed, on all six.** An
+operation optimising its published mean handling time is walking to the worst available order while every
+chart improves.
+
+**Result 4 — the two ways to be wrong differ by a factor of 6.6, and only one of them has a floor.** At a
+10% error rate, failing to recognise a critical demand costs the critical class 52.8% and escalating a
+routine one costs it 8.0%. Escalating *everything* costs 3.8580 times the ideal, which is exactly the
+first-come-first-served wait: total over-escalation is no worse than never having sorted the queue at all.
+Missing everything costs 5.2470, which is worse. So there is a rate past which sorting is worse than not
+sorting, and it is 0.62 under-recognition. **Sorting a queue by a label that is wrong often enough is not a
+weak version of sorting it; it is active misdirection.** The work-weighted total is unmoved at all sixteen
+swept points and in all six orders.
+
+**Result 5 — the right order is urgency divided by handling time, and the margin is a factor of two.** Given
+declared costs, the order minimising weighted waiting ranks by urgency per day of handling: 8.0768, 4.0797,
+1.9904, which reproduces the winner of the six. So intuition is right here — by 1.9797 and 2.0497, factors
+of two rather than ten, and those margins are ratios of two numbers no escalation policy contains. Sweeping
+the critical class's handling time at constant critical workload, critical-first stops being optimal at
+2.4512 days, exactly `urgency(critico) × handling(padrao) ÷ urgency(padrao)`, a threshold containing no
+arrival rate and no utilisation. **A class blocks the queue in proportion to how long it takes to clear, and
+urgency does not scale with that.** The major-incident bridge that holds the team for three days while two
+hundred standard requests pile up is what the declared policy asks for, past a threshold the policy never
+states.
+
+**Result 6 — and of the two levers, the cheaper one is the one that gets argued about.** On the declared
+urgency scale, a realistic mistake in the order costs 1.0749 and the declared triage desk costs 1.1157,
+while the critical class feels 1.5632 — roughly five times the excess the account feels. Prioritisation
+reviews are about the order. The order is the smaller number.
+
+### Defects found and recorded
+
+11. **I wrote five more of defect 9, one wave after recording it.** Defect 9 was an assertion that read a
+    stored ratio column instead of recomputing it from the two published figures. Wave 6's first draft did
+    the same thing in five places — the invariance check, the damage signs, the best-order flag, the
+    escalation comparison and the two-levers comparison — and the same negative test found it the same way:
+    corrupt a published figure in a copy of the database and watch the assertion pass. Recording a defect
+    does not prevent it. **The only thing that catches this class is deliberately breaking a figure and
+    checking that something fails**, and that step is still manual here, which is the honest statement of
+    where this repository's harness ends.
+12. **A sentence of arithmetic in the README that was simply wrong.** The first draft explained the top
+    label's composition with "8% of 60% is larger than 75% of 10%", which is false — 0.048 against 0.075.
+    The conclusion was right for a different reason: two contaminating streams, not one. Every *figure* in
+    the prose here is re-derived by `tests/assert_published_figures.sql`, and a sentence that reasons *about*
+    figures is not a figure, so nothing could have caught it. The fix was not to correct the sentence but to
+    stop reasoning in prose: `triage_purity` now publishes the two counts the sentence was about, 4547 and
+    5537, and they are pinned like every other figure. **Prose that does arithmetic is prose that is not
+    under test.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -373,10 +449,18 @@ assertions ran against a different database than the one that was printed.
   queue — and under a priority order the demands still waiting are systematically the low-priority ones, so
   the censoring is created by the policy rather than by the calendar. The queue here is stationary, which is
   why that effect is small enough not to be worth publishing yet; it is not small in a growing one.
-- **Priority classes that are chosen rather than declared.** `critico`, `padrao` and `melhoria` are assigned
-  by a coin. A real intake desk decides, the decision is made on partial information, and misclassification
-  moves waiting between classes in a way no discipline can undo afterwards. That is the prioritisation
-  problem a mature company actually has, and it sits on top of everything wave 5 established.
+- **A triage matrix somebody could estimate.** Wave 6's confusion matrix is declared, and an intake desk
+  cannot see its own. Estimating it needs the true class to be revealed later — which for an incident it
+  sometimes is, once the thing has been worked — so the honest object is a delayed, partially observed label
+  and a correction built on it. Whether the later revelation is representative of the demands whose class is
+  never revealed is the same question wave 4 asked about censoring, and it has the same uncomfortable answer.
+- **A triage decision that can spend time to be more accurate.** Here the matrix is free. Real triage trades
+  accuracy against the time it takes, and that time is itself work in the queue: a desk that spends ten
+  minutes classifying every demand raises the utilisation it is trying to protect. The optimum is interior
+  and nothing here computes it.
+- **Escalation as a repeated decision.** A demand's label is set once and never revisited. Real operations
+  re-triage: things get escalated after they have waited, which couples the label to the queue state and
+  makes the whole system a feedback loop rather than a sorting.
 - **Retention as a survival curve rather than a funnel.** `retencao` is modelled as four stages, which is
   a convenience. Renewal is recurring, so the honest object is a survival function with repeated events,
   and the funnel framing is what makes a churned customer look identical to one who has not renewed yet.

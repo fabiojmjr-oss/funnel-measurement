@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Onze arquivos de modelo, treze de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Treze arquivos de modelo, quinze de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -440,6 +440,165 @@ e é o que permitiu simular as duas ordens de prioridade: uma recursão de 60.00
 recursões independentes que rodam ao mesmo tempo, precisamente *porque* nenhuma ordenação da fila pode mover
 os instantes em que o servidor fica ocioso.
 
+## E a classe que ninguém conhece: a mesa de triagem
+
+A fila da onda 5 serve a classe. Nenhuma mesa de entrada consegue fazer isso, porque a classe não está
+escrita na demanda — alguém decide, no balcão, com informação parcial, antes de se saber o que torna a
+demanda urgente. Daqui em diante há duas classes por demanda: **a que determina quanto o atraso dela custa e
+a que está escrita no tíquete.** A fila serve a segunda.
+
+[`sql/a0_triage.sql`](sql/a0_triage.sql) acrescenta uma matriz de confusão declarada entre as duas — uma
+demanda crítica é reconhecida em 75% dos casos, uma `melhoria` é escalada para `critico` em 8% — e roda a
+mesma fila sobre os rótulos. As demandas, os tempos de atendimento e a utilização são idênticos aos da onda
+5. Só muda a fila em que cada demanda entra.
+
+### O rótulo não é a classe
+
+| Rótulo | demandas que o carregam | fração de todas as demandas | fração que pertence ali |
+| --- | --- | --- | --- |
+| `critico` | 10084 | **0,1681** | **0,4509** |
+| `padrao` | 22600 | 0,3767 | 0,5905 |
+| `melhoria` | 27316 | 0,4553 | 0,9215 |
+
+A classe crítica é 10% das demandas. O *rótulo* crítico é 16,81% delas, e **menos da metade dos tíquetes que
+o carregam pertence ali.** Dos 10084 tíquetes rotulados `critico`, **4547** vieram da classe crítica e
+**5537** vieram das outras duas — porque o rótulo recolhe uma fração pequena de duas classes que são três e
+seis vezes maiores que aquela que lhe dá nome, e uma fração pequena de algo grande é maior que uma fração
+grande de algo pequeno. Nenhuma falha de disciplina é necessária.
+
+### Quanto custa, e a quem é pago
+
+| Classe | espera se a triagem fosse perfeita | espera com esta mesa | razão | sem prioridade nenhuma |
+| --- | --- | --- | --- | --- |
+| `critico` | 0,6961 d | **1,0383 d** | **1,4916** | 2,5461 d |
+| `padrao` | 1,1636 d | 1,6401 d | 1,4095 | 2,5624 d |
+| `melhoria` | 4,3583 d | **3,8716 d** | **0,8883** | 2,5632 d |
+
+As demandas genuinamente críticas esperam **49,2% mais** do que esperariam sob uma mesa que nunca erra, e o
+cumprimento da meta de dois dias cai de 0,6295 para 0,5941. A classe `melhoria` fica **melhor**.
+
+Isso não é coincidência e é a razão de existir desta onda. Reetiquetar a fila não pode mudar quanto trabalho
+há nela, então a invariância da onda 5 tem de sobreviver a uma mesa que erra um terço das suas chamadas — e
+sobrevive, exatamente:
+
+| | espera ponderada por trabalho | contra triagem perfeita |
+| --- | --- | --- |
+| Prioridade crítica perfeita | 99015,6062 | — |
+| Esta mesa de triagem | 99015,6062 | **1,000000000000** |
+
+> **Um erro de triagem não é desperdício. É uma transferência.** Cada dia extra que a classe crítica espera é
+> um dia que outra classe não espera, e a outra classe é quem o rótulo errado mandou para a frente.
+
+As duas metades da aritmética são conferidas separadamente. A fórmula de Cobham se aplica aos *rótulos*,
+cujas distribuições de atendimento agora são misturas: 0,6957, 1,3640 e 5,0720 dias, contra 0,7042, 1,3984 e
+4,9970 simulados, com pior desvio de 0,867 erro padrão agrupado. A espera de uma classe verdadeira é então
+uma média condicional sobre os rótulos em que seus membros caem, o que prevê 1,0482 dias para `critico`
+contra 1,0383 simulado — 0,257 erro padrão. É a única cifra deste repositório que é composição de duas
+derivações, e por isso a única conferida nos dois níveis.
+
+### E o painel melhora
+
+A espera média reportada por demanda sob prioridade crítica perfeita é 3,0358 dias. Sob esta mesa de triagem
+é **2,9201** — a métrica que uma central publica fica **melhor** à medida que a mesa de triagem fica pior,
+porque a sobre-escalação leva as demandas numerosas e baratas para a frente e só os poucos críticos pagam.
+
+É pior que isso. Tome as seis ordens em que três classes podem ser servidas, derive cada uma, e ordene pelo
+que de fato custam à urgência declarada:
+
+| Ordem | custo à urgência declarada | contra a melhor | espera média reportada |
+| --- | --- | --- | --- |
+| `p1 p2 p3` | **5,2657** | 1,0000 | 3,0691 d |
+| `p2 p1 p3` | 5,6603 | 1,0749 | 3,0240 d |
+| `p1 p3 p2` | 7,5822 | 1,4399 | 2,4900 d |
+| `p3 p1 p2` | 8,6627 | 1,6451 | 2,3160 d |
+| `p2 p3 p1` | 10,8461 | 2,0598 | 2,1891 d |
+| `p3 p2 p1` | **11,7533** | 2,2321 | **1,9622 d** |
+
+O total ponderado por trabalho é 2,0174602407 em toda linha, como tem de ser. A espera média reportada cai
+monotonicamente tabela abaixo. **A métrica ordena as seis ordens de prioridade possíveis exatamente ao
+inverso do custo verdadeiro delas — todas as seis, não aproximadamente.** Uma operação que otimiza seu tempo
+médio de tratamento publicado está escolhendo a pior ordem disponível, e os números vão mostrá-la melhorando
+o caminho inteiro.
+
+### As duas formas de errar não valem o mesmo
+
+Varridas uma por vez, em forma fechada, contra a espera da classe crítica sob triagem perfeita:
+
+| Taxa de erro | sobre-escalação | sub-reconhecimento |
+| --- | --- | --- |
+| 5% | 1,0385 | **1,2675** |
+| 10% | 1,0800 | **1,5278** |
+| 20% | 1,1739 | 2,0280 |
+| 50% | 1,5883 | 3,3826 |
+| 100% | 3,8580 | **5,2470** |
+
+A um décimo, não reconhecer uma demanda crítica custa **52,8%** à classe crítica e escalar uma rotineira lhe
+custa **8,0%** — um fator de **6,6**. O total ponderado por trabalho não se move em nenhum dos dezesseis
+pontos. E os dois limites não são simétricos de um jeito que importa:
+
+- Escale **tudo** e a classe crítica espera 3,8580 vezes seu ideal, que é exatamente a espera do primeiro a
+  chegar. Sobre-escalação total não é pior que nunca ter ordenado a fila.
+- Erre **tudo** e ela espera 5,2470 vezes seu ideal, que é *pior* que nunca ter ordenado.
+
+Então existe uma taxa em que um sistema de prioridade deixa de valer a pena, e ela é computável: passando de
+**0,62** de sub-reconhecimento, as demandas genuinamente críticas estariam melhor numa fila não ordenada.
+Ordenar uma fila por um rótulo errado com frequência suficiente não é uma versão fraca de ordenar. É
+desorientação ativa.
+
+### A ordem certa não é a urgente
+
+A onda 5 provou que nenhuma ordem muda o total, então a única coisa que uma ordem faz é decidir quem espera —
+e decidir exige dizer quanto a espera custa. [`sql/00_parameters.sql`](sql/00_parameters.sql) declara isso
+como taxa de câmbio e não como dinheiro: um dia de atraso em `critico` vale 10 dias em `melhoria`, `padrao`
+vale 3. Dados os custos, a ordem que minimiza a espera ponderada é conhecida, e **não** é "mais urgente
+primeiro":
+
+> Ordene por **urgência dividida pelo tempo médio de atendimento**, não por urgência.
+
+| Classe | urgência | atendimento médio | urgência por dia de atendimento | margem antes de a ordem inverter |
+| --- | --- | --- | --- | --- |
+| `critico` | 10 | 1,2381 d | **8,0768** | **1,9797** |
+| `padrao` | 3 | 0,7353 d | 4,0797 | **2,0497** |
+| `melhoria` | 1 | 0,5024 d | 1,9904 | — |
+
+A regra reproduz `p1 p2 p3`, a vencedora das seis — então nesta conta a intuição está certa. A coluna que
+vale ler é a última. A margem que protege a resposta intuitiva é um fator de **dois**, não de dez, e é a
+razão entre dois números que nenhuma política de escalação contém. Varrer o tempo de atendimento da classe
+crítica a carga crítica constante — o mesmo trabalho chegando como muitos incidentes rápidos ou como poucos
+lentos — localiza o ponto de ruptura exatamente:
+
+| Atendimento crítico | o que crítico-primeiro custa contra padrão-primeiro |
+| --- | --- |
+| 0,5000 d | 0,8046 |
+| 1,2381 d *(declarado)* | 0,9303 |
+| 2,4000 d | 0,9982 |
+| **2,4512 d** | **o limiar** |
+| 2,5000 d | 1,0016 |
+| 6,0000 d | 1,0544 |
+
+Em 2,4512 dias de atendimento, crítico-primeiro deixa de ser a melhor ordem. O limiar é exatamente
+`urgência(critico) × atendimento(padrao) ÷ urgência(padrao)`, e não contém taxa de chegada nem utilização.
+**Uma classe bloqueia a fila em proporção ao tempo que leva para ser liberada, e a urgência não escala com
+isso.** A sala de crise de incidente maior que ocupa o time inteiro por três dias enquanto duzentas
+solicitações padrão acumulam atrás não é falha de execução. É o que a política declarada pede, passando de
+um limiar que a política nunca enuncia.
+
+### Qual das duas alavancas puxar
+
+Os dois achados estão na mesma escala, e não valem o mesmo esforço:
+
+| | custo à urgência declarada |
+| --- | --- |
+| Triagem perfeita, melhor ordem | 5,2657 |
+| Triagem perfeita, segunda melhor ordem | 1,0749× |
+| **Esta mesa de triagem, melhor ordem** | **1,1157×** |
+| Triagem perfeita, pior ordem | 2,2321× |
+
+Um erro realista na *ordem* custa 7,5%. A mesa de triagem declarada custa **11,6%** — e a classe crítica não
+sente 11,6% disso. Ela sente **1,5632** vezes sua espera ideal, um excesso de **56,3%**, cerca de cinco vezes
+o excesso que a conta inteira carrega. Uma revisão de priorização gasta seu tempo discutindo a ordem. A ordem
+é o problema mais barato.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -467,6 +626,17 @@ os instantes em que o servidor fica ocioso.
   das demandas críticas aqui perde uma meta de dois dias pelo tempo de atendimento em si. Sequenciamento
   nenhum recupera isso, e uma revisão que gasta seu tempo em ordenação vai continuar perdendo por aquele
   quinto.
+- **Audite o que está no rótulo do topo antes de discutir a ordem.** Menos da metade dos tíquetes rotulados
+  como críticos aqui pertence ali, e isso sozinho custa 49,2% da espera à classe genuinamente crítica. A
+  ordem é o problema mais barato: um erro realista nela custa 7,5% contra 11,6% da triagem.
+- **Gaste esforço de triagem em reconhecer o urgente, não em reprimir o inflado.** Deixar de identificar uma
+  demanda crítica lhe custa 6,6 vezes o que escalar uma rotineira lhe custa, à mesma taxa de erro. Passando
+  de 0,62 de sub-reconhecimento, o sistema de prioridade é pior para a classe crítica que nenhum sistema.
+- **Divida urgência por tempo de atendimento antes de ordenar.** A ordem que minimiza o custo da espera é
+  urgência por dia de atendimento, não urgência. Nesta conta as duas coincidem — por um fator de dois, que é
+  a razão entre dois números que nenhuma política de escalação escreve.
+- **Nunca deixe um tempo médio de tratamento julgar uma política de prioridade.** Nas seis ordens em que três
+  classes podem ser servidas, a espera média reportada as ordena exatamente ao inverso do custo verdadeiro.
 
 ## Rodando
 
@@ -493,7 +663,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/80_archiving.sql`](sql/80_archiving.sql) | A revisão de pipeline que censura por julgamento, o que ela custa à estimativa, e a janela em que não pode. |
 | [`sql/90_queue.sql`](sql/90_queue.sql) | Um servidor, três classes de prioridade, três disciplinas: a espera que cada uma produz, o total que não se move, a varredura de utilização e o que uma fatia de 180 dias consegue dizer. |
 | [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | A fila derivada no papel — Pollaczek–Khinchine, Cobham, e a lei de conservação de que a invariância é um caso. |
-| [`tests/`](tests) | Treze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/a0_triage.sql`](sql/a0_triage.sql) | O rótulo que a fila de fato serve: uma matriz de confusão declarada, a fila refeita sobre ela, o que cada classe perde e a quem isso é pago. |
+| [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham sobre os rótulos composto nas classes, as duas direções de erro varridas, as seis ordens enumeradas, e a regra que nomeia a vencedora. |
+| [`tests/`](tests) | Quinze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -518,7 +690,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Dez até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Doze até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Eleven model files, thirteen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Thirteen model files, fifteen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -437,6 +437,162 @@ interval honest, and it is what let the two priority orders be simulated at all:
 becomes thousands of independent ones that run at once, precisely *because* no ordering of the queue can
 move the instants at which the server goes idle.
 
+## And the class nobody knows: the triage desk
+
+Wave 5's queue serves the class. No intake desk can do that, because the class is not written on the
+demand — somebody decides it, at the counter, on partial information, before the thing that makes the
+demand urgent is known. From here on there are two classes per demand: **the one that determines what its
+delay costs, and the one written on the ticket.** The queue serves the second.
+
+[`sql/a0_triage.sql`](sql/a0_triage.sql) adds a declared confusion matrix between them — a critical demand
+is recognised 75% of the time, a `melhoria` is escalated to `critico` 8% of the time — and re-runs the same
+queue on the labels. The demands, the handling times and the utilisation are identical to wave 5's. Only
+the line each demand stands in changes.
+
+### The label is not the class
+
+| Label | demands carrying it | share of all demands | share that belongs there |
+| --- | --- | --- | --- |
+| `critico` | 10084 | **0.1681** | **0.4509** |
+| `padrao` | 22600 | 0.3767 | 0.5905 |
+| `melhoria` | 27316 | 0.4553 | 0.9215 |
+
+The critical class is 10% of demands. The critical *label* is 16.81% of them, and **fewer than half the
+tickets carrying it belong there.** Of the 10084 tickets labelled `critico`, **4547** came from the critical
+class and **5537** came from the other two — because the label collects a small share of two classes that are
+three and six times larger than the one it is named after, and a small share of something large is larger
+than a large share of something small. No failure of discipline is required.
+
+### What it costs, and who it is paid to
+
+| Class | wait if triage were perfect | wait under this desk | ratio | with no priority at all |
+| --- | --- | --- | --- | --- |
+| `critico` | 0.6961 d | **1.0383 d** | **1.4916** | 2.5461 d |
+| `padrao` | 1.1636 d | 1.6401 d | 1.4095 | 2.5624 d |
+| `melhoria` | 4.3583 d | **3.8716 d** | **0.8883** | 2.5632 d |
+
+The genuinely critical demands wait **49.2% longer** than they would under a desk that never errs, and
+their two-day target attainment falls from 0.6295 to 0.5941. The `melhoria` class is **better off**.
+
+That is not a coincidence and it is the reason this wave exists. Relabelling the queue cannot change how
+much work is in it, so wave 5's invariance has to survive a desk that mislabels a third of its calls — and
+it does, exactly:
+
+| | work-weighted waiting | against perfect triage |
+| --- | --- | --- |
+| Perfect critical-first priority | 99015.6062 | — |
+| This triage desk | 99015.6062 | **1.000000000000** |
+
+> **A triage error is not waste. It is a transfer.** Every extra day the critical class waits is a day some
+> other class does not, and the other class is whoever the wrong label sent to the front.
+
+Both halves of the arithmetic are checked separately. Cobham's formula applies to the *labels*, whose
+service distributions are now mixtures: 0.6957, 1.3640 and 5.0720 days, against 0.7042, 1.3984 and 4.9970
+simulated, the worst deviation 0.867 clustered standard errors. The wait of a true class is then a
+conditional average over the labels its members land in, which predicts 1.0482 days for `critico` against
+1.0383 simulated — 0.257 standard errors. It is the only figure in this repository that is a composition of
+two derivations, so it is the only one checked at both levels.
+
+### And the dashboard improves
+
+The reported mean wait per demand under perfect critical-first priority is 3.0358 days. Under this triage
+desk it is **2.9201** — the metric a service desk publishes gets **better** as the triage desk gets worse,
+because over-escalation moves the numerous, cheap demands to the front and only the critical few pay.
+
+It is worse than that. Take all six orders three classes can be served in, derive each one, and sort them
+by what they truly cost at the declared urgency:
+
+| Order | cost at declared urgency | against the best | reported mean wait |
+| --- | --- | --- | --- |
+| `p1 p2 p3` | **5.2657** | 1.0000 | 3.0691 d |
+| `p2 p1 p3` | 5.6603 | 1.0749 | 3.0240 d |
+| `p1 p3 p2` | 7.5822 | 1.4399 | 2.4900 d |
+| `p3 p1 p2` | 8.6627 | 1.6451 | 2.3160 d |
+| `p2 p3 p1` | 10.8461 | 2.0598 | 2.1891 d |
+| `p3 p2 p1` | **11.7533** | 2.2321 | **1.9622 d** |
+
+The work-weighted total is 2.0174602407 in every row, as it must be. The reported mean wait falls
+monotonically down the table. **The metric ranks the six possible priority orders in exactly the reverse of
+their true cost — all six, not approximately.** An operation that optimises its published mean handling
+time is choosing the worst available order, and the numbers will show it improving the whole way.
+
+### The two ways to be wrong are not worth the same
+
+Swept one at a time, in closed form, against the critical class's waiting under perfect triage:
+
+| Error rate | over-escalation | under-recognition |
+| --- | --- | --- |
+| 5% | 1.0385 | **1.2675** |
+| 10% | 1.0800 | **1.5278** |
+| 20% | 1.1739 | 2.0280 |
+| 50% | 1.5883 | 3.3826 |
+| 100% | 3.8580 | **5.2470** |
+
+At a tenth, failing to recognise a critical demand costs the critical class **52.8%** and escalating a
+routine one costs it **8.0%** — a factor of **6.6**. The work-weighted total is unmoved at all sixteen
+points. And the two limits are not symmetric in a way that matters:
+
+- Escalate **everything** and the critical class waits 3.8580 times its ideal, which is exactly the
+  first-come-first-served wait. Total over-escalation is no worse than never having sorted the queue.
+- Miss **everything** and it waits 5.2470 times its ideal, which is *worse* than never having sorted it.
+
+So there is a rate at which a priority system stops being worth having, and it is computable: past **0.62**
+under-recognition, the genuinely critical demands would be better off in an unsorted queue. Sorting a queue
+by a label that is wrong often enough is not a weak version of sorting it. It is active misdirection.
+
+### The right order is not the urgent one
+
+Wave 5 proved no order changes the total, so the only thing an order does is decide who waits — and
+deciding requires saying what waiting costs. [`sql/00_parameters.sql`](sql/00_parameters.sql) declares that
+as an exchange rate rather than money: a day of delay on `critico` is worth 10 days on `melhoria`, `padrao`
+3. Given costs, the order that minimises weighted waiting is known, and it is **not** "most urgent first":
+
+> Rank by **urgency divided by mean handling time**, not by urgency.
+
+| Class | urgency | mean handling | urgency per day of handling | margin before the order swaps |
+| --- | --- | --- | --- | --- |
+| `critico` | 10 | 1.2381 d | **8.0768** | **1.9797** |
+| `padrao` | 3 | 0.7353 d | 4.0797 | **2.0497** |
+| `melhoria` | 1 | 0.5024 d | 1.9904 | — |
+
+The rule reproduces `p1 p2 p3`, the winner of the six — so on this account intuition is right. The column
+worth reading is the last one. The margin protecting the intuitive answer is a factor of **two**, not a
+factor of ten, and it is the ratio of two numbers no escalation policy contains. Sweeping the critical
+class's handling time at constant critical workload — the same work arriving as many quick incidents or a
+few slow ones — locates the breaking point exactly:
+
+| Critical handling time | what critical-first costs against standard-first |
+| --- | --- |
+| 0.5000 d | 0.8046 |
+| 1.2381 d *(declared)* | 0.9303 |
+| 2.4000 d | 0.9982 |
+| **2.4512 d** | **the threshold** |
+| 2.5000 d | 1.0016 |
+| 6.0000 d | 1.0544 |
+
+At 2.4512 days of handling, critical-first stops being the best order. The threshold is exactly
+`urgency(critico) × handling(padrao) ÷ urgency(padrao)`, and it contains no arrival rate and no utilisation.
+**A class blocks the queue in proportion to how long it takes to clear, and urgency does not scale with
+that.** The major-incident bridge that occupies the whole team for three days while two hundred standard
+requests pile up behind it is not a failure of execution. It is what the declared policy asks for, past a
+threshold the policy never states.
+
+### Which of the two levers to pull
+
+Both findings are on one scale, and they are not worth the same effort:
+
+| | cost at declared urgency |
+| --- | --- |
+| Perfect triage, best order | 5.2657 |
+| Perfect triage, next-best order | 1.0749× |
+| **This triage desk, best order** | **1.1157×** |
+| Perfect triage, worst order | 2.2321× |
+
+A realistic mistake in the *order* costs 7.5%. The declared triage desk costs **11.6%** — and the critical
+class does not feel 11.6% of it. It feels **1.5632** times its ideal waiting, a **56.3%** excess, roughly
+five times the excess the account as a whole carries. A prioritisation review spends its time arguing about
+the order. The order is the cheaper problem.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -461,6 +617,17 @@ move the instants at which the server goes idle.
 - **Check a service target against the handling time alone before blaming the queue.** A fifth of the
   critical demands here miss a two-day target on handling time by itself. No scheduling can recover that,
   and a review that spends its time on sequencing will keep missing by that fifth.
+- **Audit what is in the top label before arguing about the order.** Fewer than half the tickets labelled
+  critical here belong there, and that alone costs the genuinely critical class 49.2% of its waiting. The
+  order is the cheaper problem: a realistic mistake in it costs 7.5% against triage's 11.6%.
+- **Spend triage effort on recognising the urgent, not on suppressing the inflated.** Failing to spot a
+  critical demand costs it 6.6 times what escalating a routine one costs it, at the same error rate. Past
+  0.62 under-recognition the priority system is worse for the critical class than no priority system.
+- **Divide urgency by handling time before you rank.** The order that minimises what waiting costs is
+  urgency per day of handling, not urgency. On this account the two agree — by a factor of two, which is the
+  ratio of two numbers no escalation policy writes down.
+- **Never let a mean handling time judge a priority policy.** Across all six orders three classes can be
+  served in, the reported mean wait ranks them in exactly reverse order of their true cost.
 
 ## Running it
 
@@ -487,7 +654,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/80_archiving.sql`](sql/80_archiving.sql) | The pipeline review that censors by judgement, what it costs the estimate, and the window at which it cannot. |
 | [`sql/90_queue.sql`](sql/90_queue.sql) | One server, three priority classes, three disciplines: the waiting each one produces, the total that does not move, the utilisation sweep and what a 180-day slice can say. |
 | [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | The queue derived on paper — Pollaczek–Khinchine, Cobham, and the conservation law the invariance is an instance of. |
-| [`tests/`](tests) | Thirteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/a0_triage.sql`](sql/a0_triage.sql) | The label the queue actually serves: a declared confusion matrix, the queue re-run on it, what each class loses and who it is paid to. |
+| [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham on the labels composed onto the classes, both error directions swept, all six orders enumerated, and the rule that names the winner. |
+| [`tests/`](tests) | Fifteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -511,7 +680,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Ten so far, in
+**And defects are recorded rather than quietly fixed.** Twelve so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

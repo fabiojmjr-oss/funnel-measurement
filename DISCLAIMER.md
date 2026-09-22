@@ -26,6 +26,14 @@ team's capacity, staffing, ticket volume or service target appears anywhere. The
 a quarter of anything: it is the sample size the arithmetic needs, and the repository says so and then
 measures what a 180-day slice would have concluded instead.
 
+**The triage desk and the cost of a day are invented as well.** The confusion matrix between the true class
+and the label on the ticket — a critical demand recognised 75% of the time, a `melhoria` escalated 8% of the
+time — is a declared parameter, not a measured error rate from any real intake desk. The same is true of the
+urgency weight, which is deliberately not money: it says how many days of delay on a `melhoria` one day of
+delay on another class is worth, which is all the rule that minimises weighted waiting depends on. No real
+organisation's escalation policy, service target, incident severity scale or triage accuracy appears
+anywhere, and the declared 10 : 3 : 1 is conventional rather than representative.
+
 **The column no real operation has is the point.** `declared_rate` is the eventual conversion rate the
 generator was built from — the answer key. A real funnel has no such column, which is exactly why a real
 funnel cannot tell which of its four readings is the rate. Every finding here exists because the
@@ -36,7 +44,7 @@ declared parameters are chosen to be plausible, not to be representative of anyt
 quoted here is a property of this file, not of any market.
 
 **Methods are cited as methods.** Cohort analysis, right-censoring, steady-state renewal arguments, the
-exponential delay model, the M/G/1 queue and its priority and conservation results are standard; where a derivation is used it is written out so that it can be
+exponential delay model, the M/G/1 queue and its priority, conservation and cost-scaling results are standard; where a derivation is used it is written out so that it can be
 checked rather than trusted.
 
 ---
@@ -70,6 +78,14 @@ serviço de nenhum time real. A corrida de 60.000 demandas não é um trimestre 
 amostra que a aritmética exige, e o repositório diz isso e então mede o que uma fatia de 180 dias teria
 concluído.
 
+**A mesa de triagem e o custo de um dia também são inventados.** A matriz de confusão entre a classe
+verdadeira e o rótulo no tíquete — uma demanda crítica reconhecida em 75% dos casos, uma `melhoria` escalada
+em 8% — é um parâmetro declarado, não uma taxa de erro medida em nenhuma mesa de entrada real. O mesmo vale
+para o peso de urgência, e ele deliberadamente não é dinheiro: diz quantos dias de atraso numa `melhoria` vale
+um dia de atraso em outra classe, que é tudo de que a regra que minimiza a espera ponderada depende. Não
+aparece em lugar nenhum a política de escalação, a meta de serviço, a escala de severidade de incidente ou a
+acurácia de triagem de nenhuma organização real, e o 10 : 3 : 1 declarado é convencional, não representativo.
+
 **A coluna que nenhuma operação real tem é o ponto.** `declared_rate` é a taxa de conversão eventual a
 partir da qual o gerador foi construído — o gabarito. Um funil real não tem essa coluna, e é exatamente
 por isso que um funil real não consegue dizer qual das suas quatro leituras é a taxa. Todo achado aqui
@@ -80,6 +96,6 @@ Os parâmetros declarados são escolhidos para serem plausíveis, não para sere
 Uma taxa de conversão citada aqui é propriedade deste arquivo, não de nenhum mercado.
 
 **Métodos são citados como métodos.** Análise de coorte, censura à direita, argumentos de renovação em
-estado estacionário, o modelo de atraso exponencial, a fila M/G/1 e seus resultados de prioridade e
-conservação são padrão; onde uma derivação é usada, ela está
+estado estacionário, o modelo de atraso exponencial, a fila M/G/1 e seus resultados de prioridade,
+conservação e escala de custo são padrão; onde uma derivação é usada, ela está
 escrita para poder ser conferida em vez de aceita.

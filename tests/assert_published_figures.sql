@@ -112,6 +112,100 @@ WITH expected(what, detail, value) AS (
     ('queue detectable error', 'clustered highest', 0.2023),
     ('queue detectable error', 'naive lowest',      0.0257),
 
+    -- Wave 6, the triage desk. What is in each label.
+    ('triage labelled',        'p1',                10084.0),
+    ('triage labelled',        'p2',                22600.0),
+    ('triage labelled',        'p3',                27316.0),
+    ('triage label share',     'p1',                    0.1681),
+    ('triage label share',     'p2',                    0.3767),
+    ('triage label share',     'p3',                    0.4553),
+    ('triage label purity',    'p1',                    0.4509),
+    ('triage label purity',    'p2',                    0.5905),
+    ('triage label purity',    'p3',                    0.9215),
+    ('triage from own class',  'p1',                 4547.0),
+    ('triage from others',     'p1',                 5537.0),
+
+    -- What the labelling costs each class.
+    ('triage wait',            'p1',                    1.0383),
+    ('triage wait',            'p2',                    1.6401),
+    ('triage wait',            'p3',                    3.8716),
+    ('triage ratio',           'p1',                    1.4916),
+    ('triage ratio',           'p2',                    1.4095),
+    ('triage ratio',           'p3',                    0.8883),
+    ('triage sla met',         'p1',                    0.5941),
+
+    -- And the invariance surviving the relabelling.
+    ('triage work weighted',   'total',             99015.6062),
+    ('triage work weighted',   'against perfect',       1.0),
+    ('triage reported mean',   'per demand',            2.9201),
+
+    -- Cobham on the labels, and the composition onto the classes.
+    ('triage label derived',   'p1',                    0.6957),
+    ('triage label derived',   'p2',                    1.3640),
+    ('triage label derived',   'p3',                    5.0720),
+    ('triage label simulated', 'p1',                    0.7042),
+    ('triage label simulated', 'p2',                    1.3984),
+    ('triage label simulated', 'p3',                    4.9970),
+    ('triage class derived',   'p1',                    1.0482),
+    ('triage worst deviation', 'standard errors',       0.867),
+
+    -- The six orders, and what the dashboard says about them.
+    ('order cost',             'p1 p2 p3',              5.2657),
+    ('order cost',             'p2 p1 p3',              5.6603),
+    ('order cost',             'p1 p3 p2',              7.5822),
+    ('order cost',             'p3 p1 p2',              8.6627),
+    ('order cost',             'p2 p3 p1',             10.8461),
+    ('order cost',             'p3 p2 p1',             11.7533),
+    ('order against best',     'p2 p1 p3',              1.0749),
+    ('order against best',     'p1 p3 p2',              1.4399),
+    ('order against best',     'p3 p1 p2',              1.6451),
+    ('order against best',     'p2 p3 p1',              2.0598),
+    ('order against best',     'p3 p2 p1',              2.2321),
+    ('order reported mean',    'p1 p2 p3',              3.0691),
+    ('order reported mean',    'p2 p1 p3',              3.0240),
+    ('order reported mean',    'p1 p3 p2',              2.4900),
+    ('order reported mean',    'p3 p1 p2',              2.3160),
+    ('order reported mean',    'p2 p3 p1',              2.1891),
+    ('order reported mean',    'p3 p2 p1',              1.9622),
+    ('order work weighted',    'p1 p2 p3',              2.0174602407),
+    ('order work weighted',    'p3 p2 p1',              2.0174602407),
+
+    -- The two error directions.
+    ('escalation ratio',       'over 0.05',             1.0385),
+    ('escalation ratio',       'over 0.10',             1.0800),
+    ('escalation ratio',       'over 0.20',             1.1739),
+    ('escalation ratio',       'over 0.50',             1.5883),
+    ('escalation ratio',       'over 1.00',             3.8580),
+    ('escalation ratio',       'under 0.05',            1.2675),
+    ('escalation ratio',       'under 0.10',            1.5278),
+    ('escalation ratio',       'under 0.20',            2.0280),
+    ('escalation ratio',       'under 0.50',            3.3826),
+    ('escalation ratio',       'under 1.00',            5.2470),
+    ('escalation crossover',   'rate',                  0.62),
+
+    -- The rule, its margins, and where it breaks.
+    ('urgency per handling',   'p1',                    8.0768),
+    ('urgency per handling',   'p2',                    4.0797),
+    ('urgency per handling',   'p3',                    1.9904),
+    ('handling mean',          'p1',                    1.2381),
+    ('handling mean',          'p2',                    0.7353),
+    ('handling mean',          'p3',                    0.5024),
+    ('order swap margin',      'p1',                    1.9797),
+    ('order swap margin',      'p2',                    2.0497),
+    ('handling swap point',    'days',                  2.4512),
+    ('critical first cost',    '0.5000',                0.8046),
+    ('critical first cost',    '1.2380',                0.9303),
+    ('critical first cost',    '2.4000',                0.9982),
+    ('critical first cost',    '2.5000',                1.0016),
+    ('critical first cost',    '6.0000',                1.0544),
+
+    -- And the two levers.
+    ('lever cost',             'perfect triage best order', 5.2657),
+    ('lever cost',             'imperfect triage',          1.1157),
+    ('lever cost',             'next best order',           1.0749),
+    ('lever cost',             'worst order',               2.2321),
+    ('lever cost',             'critical class',            1.5632),
+
     -- The sales funnel shown stage by stage.
     ('window_rate',   'venda qualificado',        0.4267),
     ('cohort_rate',   'venda qualificado',        0.4464),
@@ -478,6 +572,74 @@ measured(what, detail, value) AS (
     UNION ALL SELECT 'queue honest half width', 'days', round(honest_half_width, 4) FROM queue_measurability
     UNION ALL SELECT 'queue interval understated', 'times', round(interval_understated_by, 4)
         FROM queue_measurability
+
+    UNION ALL SELECT 'triage labelled', assigned_priority, labelled::DOUBLE FROM triage_purity
+    UNION ALL SELECT 'triage label share', assigned_priority, round(share_of_all_demands, 4)
+        FROM triage_purity
+    UNION ALL SELECT 'triage label purity', assigned_priority, round(share_correctly_labelled, 4)
+        FROM triage_purity
+    UNION ALL SELECT 'triage from own class', assigned_priority, demands_from_its_own_class::DOUBLE
+        FROM triage_purity WHERE assigned_priority = 'p1'
+    UNION ALL SELECT 'triage from others', assigned_priority, demands_from_other_classes::DOUBLE
+        FROM triage_purity WHERE assigned_priority = 'p1'
+
+    UNION ALL SELECT 'triage wait', priority, round(wait_under_real_triage, 4) FROM triage_damage
+    UNION ALL SELECT 'triage ratio', priority,
+        round(wait_under_real_triage / wait_under_perfect_triage, 4) FROM triage_damage
+    UNION ALL SELECT 'triage sla met', priority, round(sla_under_real_triage, 4)
+        FROM triage_damage WHERE priority = 'p1'
+
+    UNION ALL SELECT 'triage work weighted', 'total', round(work_weighted_wait, 4) FROM triage_totals
+    UNION ALL SELECT 'triage work weighted', 'against perfect',
+        round(t.work_weighted_wait / q.work_weighted_wait, 12)
+        FROM triage_totals t, queue_totals q WHERE q.discipline = 'priority'
+    UNION ALL SELECT 'triage reported mean', 'per demand', round(mean_wait_per_demand, 4)
+        FROM triage_totals
+
+    UNION ALL SELECT 'triage label derived', priority, round(derived_wait, 4)
+        FROM triage_label_closed_form
+    UNION ALL SELECT 'triage label simulated', priority, round(simulated_wait, 4)
+        FROM triage_label_closed_form
+    UNION ALL SELECT 'triage class derived', priority, round(derived_wait, 4)
+        FROM triage_closed_form WHERE priority = 'p1'
+    UNION ALL SELECT 'triage worst deviation', 'standard errors', round(worst, 3) FROM (
+        SELECT greatest(
+            (SELECT max(abs((simulated_wait - derived_wait) / wait_standard_error))
+             FROM triage_label_closed_form),
+            (SELECT max(abs((simulated_wait - derived_wait) / wait_standard_error))
+             FROM triage_closed_form)) AS worst
+    )
+
+    UNION ALL SELECT 'order cost', ordering, round(weighted_waiting, 4) FROM urgency_orders
+    UNION ALL SELECT 'order against best', ordering,
+        round(weighted_waiting / min(weighted_waiting) OVER (), 4) FROM urgency_orders
+    UNION ALL SELECT 'order reported mean', ordering, round(mean_wait_per_demand, 4) FROM urgency_orders
+    UNION ALL SELECT 'order work weighted', ordering, round(work_weighted_waiting, 10)
+        FROM urgency_orders
+
+    UNION ALL SELECT 'escalation ratio', direction || ' ' || rate,
+        round(critical_wait / (SELECT derived_wait FROM queue_closed_form
+                               WHERE discipline = 'priority' AND priority = 'p1'), 4)
+        FROM escalation_sweep
+    UNION ALL SELECT 'escalation crossover', 'rate', min(under_recognition_rate)::DOUBLE
+        FROM escalation_crossover WHERE critical_wait > wait_with_no_priority_at_all
+
+    UNION ALL SELECT 'urgency per handling', priority, round(cost_per_day_of_handling, 4) FROM urgency_rule
+    UNION ALL SELECT 'handling mean', priority, round(realised_service_mean, 4) FROM urgency_rule
+    UNION ALL SELECT 'order swap margin', priority, round(margin_before_the_order_swaps, 4)
+        FROM urgency_rule WHERE margin_before_the_order_swaps IS NOT NULL
+    UNION ALL SELECT 'handling swap point', 'days', round(max(handling_at_which_the_order_swaps), 4)
+        FROM urgency_sweep
+    UNION ALL SELECT 'critical first cost', format('{:.4f}', critical_handling_days),
+        round(weighted_critical_first / weighted_standard_first, 4) FROM urgency_sweep
+
+    UNION ALL SELECT 'lever cost', 'perfect triage best order', round(weighted_perfect, 4) FROM triage_cost
+    UNION ALL SELECT 'lever cost', 'imperfect triage', round(weighted_real / weighted_perfect, 4)
+        FROM triage_cost
+    UNION ALL SELECT 'lever cost', 'next best order', round(cost_of_the_next_best_order, 4) FROM triage_cost
+    UNION ALL SELECT 'lever cost', 'worst order', round(cost_of_the_worst_order, 4) FROM triage_cost
+    UNION ALL SELECT 'lever cost', 'critical class',
+        round(cost_of_imperfect_triage_to_the_critical_class, 4) FROM triage_cost
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,
