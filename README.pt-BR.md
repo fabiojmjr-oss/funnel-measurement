@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Dezessete arquivos de modelo, dezessete de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Dezenove arquivos de modelo, dezoito de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -799,6 +799,110 @@ para que o leitor saiba quando se preocupar.
 
 > **Olhe uma vez. Escale a qualquer indicação. Gaste a discussão em capacidade.**
 
+## E o estágio que não é estágio: sujeitos que pulam, voltam e retornam
+
+Toda leitura das ondas 1 a 4 se apoia em uma forma que ninguém enuncia: um sujeito ocupa um estágio por vez,
+avança e para. É isso que faz de "alcançou o estágio k" um evento bem definido, de "a taxa no estágio k" uma
+fração de um denominador fixo, e do produto das taxas de passagem um limite superior que nada pode exceder.
+[`sql/d0_movements.sql`](sql/d0_movements.sql) constrói um segundo log de eventos em que os sujeitos quebram
+as três coisas: alguns **pulam** um estágio, alguns **voltam** ao anterior, e alguns **retornam** semanas
+depois e começam de novo.
+
+Mesmos sujeitos, mesmos dias de chegada, mesmas moedas de avanço. A entrada um tentativa um sorteia os sais
+com que o log monótono de [`sql/20_events.sql`](sql/20_events.sql) foi construído, então o controle é exato e
+não aproximado: para todo sujeito cuja moeda de pulo deu coroa, **todas as 127122 linhas coincidem até o
+dia**, e [`tests/assert_movements.sql`](tests/assert_movements.sql) falha se uma única não coincidir. Toda
+diferença entre os dois logs é um movimento, e nada mais.
+
+O tamanho da diferença primeiro: **174745 linhas contra 137923**, uma razão de **1,2670** na mesma
+população. 11195 das linhas extras são segundas entradas, 29583 são o caminho de volta depois de um recuo, e
+29452 pares sujeito-estágio são visitados mais de uma vez. Um esquema com uma linha por sujeito por estágio
+não consegue guardar nenhuma delas.
+
+### O teto deixa de ser teto
+
+O diagnóstico mais barato da onda 1 era que **um estágio lendo acima do produto das próprias taxas de
+passagem prova que a leitura não é uma taxa.** Custa uma consulta e era a coisa mais portátil deste
+repositório. Veja o que um pulo faz com ele.
+
+Uma primeira entrada alcança o passo três passando pelo passo dois e depois pelo três, ou pulando o passo
+dois e depois passando pelo três. Então o alcance é `[(1-s)·p₂ + s]·p₃` contra um teto declarado de `p₂·p₃`,
+acima dele por exatamente
+
+```
+1 + s·(1 - p₂)/p₂
+```
+
+para qualquer taxa de pulo — porque **quem pulou nunca foi submetido à moeda com que o teto é construído.**
+
+| `venda`, coortes maduras | log monótono | log confuso | teto declarado |
+| --- | --- | --- | --- |
+| `proposta` | 0,2374 | **0,2911** | 0,2475 |
+| ÷ teto | 0,9590 | **1,1762** | 1,0 |
+
+A leitura confusa está **17,62% acima de um limite que ela não pode exceder**, em um gerador que obedece toda
+taxa declarada a quatro erros padrão. A razão derivada de `venda` é **1,1467** e o alcance simulado de
+primeira entrada é **0,2764** contra uma derivação de **0,2838** — dentro da tolerância, que são quatro erros
+padrão da proporção e não um épsilon fixo.
+
+Ou seja: o diagnóstico produz um falso alarme em um funil saudável. Já seria ruim o suficiente. É pior do que
+isso, e a segunda metade é o achado.
+
+### E ele fica calado no funil que está sendo contornado
+
+`retencao` é pulado a apenas 0,05, mas sua taxa de passagem no passo dois é baixa, então a violação derivada
+é **1,1773** — *maior* que a de `venda`. Sua leitura de coorte com janela é **0,1449** contra um teto de
+**0,1496**. Ela lê *abaixo* do teto. A janela de maturidade de que este repositório inteiro trata censura as
+caminhadas lentas que o pulo acrescenta, e os dois efeitos se cancelam para algo abaixo de um.
+
+> **Um diagnóstico, as duas direções de erro ao mesmo tempo: ele dispara em um funil que está bem e fica
+> calado em um funil que está sendo contornado. Não é um diagnóstico. É uma pergunta — "este estágio pode ser
+> pulado?" — e ele não distingue a resposta de uma métrica quebrada.**
+
+Errei isso duas vezes ao construir, nas duas direções, e é por isso que a derivação agora nomeia sua
+população e seu horizonte dentro do próprio arquivo. Defeitos 16 e 17 em
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### O denominador não é o número de sujeitos
+
+Um retorno acrescenta uma segunda linha no estágio de entrada. Um recuo acrescenta uma segunda linha em um
+estágio do meio. Um funil lido por contagem de linhas infla **as duas pontas** de toda fração, por fatores
+diferentes, e qual delas vence depende de onde os sujeitos desistiram.
+
+| Estágio | eventos ÷ sujeitos | taxa por evento ÷ taxa por sujeito |
+| --- | --- | --- |
+| `venda` `proposta` | 1,2009 | **1,0594** |
+| `venda` `negociacao` | 1,2256 | **1,0812** |
+| `retencao` `em-risco` | 1,1585 | **0,9229** |
+
+O viés **não tem sinal**. Um fator de correção precisaria de um, e o mesmo log de eventos produz
+superestimação e subestimação em estágios diferentes. `tests/assert_movements.sql` afirma que as duas
+direções ocorrem, então uma mudança futura que deixe o viés arrumado quebra o build.
+
+### E "tempo até alcançar" são dois números
+
+| `venda` `negociacao` | |
+| --- | --- |
+| Primeiro toque médio | 15,29 dias |
+| Último toque médio | 18,04 dias |
+| Diferença | **2,7503 dias** |
+| Proporção de sujeitos que visitaram duas vezes | **0,2049** |
+
+Um quinto dos sujeitos alcança esse estágio duas vezes, e as duas respostas honestas para "quanto tempo leva
+para chegar à negociação" estão 18% distantes. Nada no esquema registra qual delas um relatório quis dizer, e
+`min` contra `max` em um `GROUP BY` não é uma decisão que alguém documente.
+
+### As ondas 1 a 4, revisitadas
+
+| | |
+| --- | --- |
+| Onda 1 | Uma taxa de funil é uma afirmação de coorte, e a leitura por janela é a censura. |
+| Onda 4 | O teto é a checagem mais barata que existe. |
+| Onda 9 | E ele vale só enquanto um estágio for um estágio. Pulos quebram o limite; retornos quebram o denominador; recuos quebram o relógio. |
+
+> **Antes de ler qualquer funil, pergunte se um sujeito pode estar em dois estágios, em nenhum, ou no mesmo
+> duas vezes. Se puder, o número do painel não tem denominador.**
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -857,6 +961,18 @@ para que o leitor saiba quando se preocupar.
   maior posteriori vezes a urgência bate comprometer-se com a maior posteriori em todo limiar — acertando
   *menos* rótulos.
 
+- **Pergunte se um estágio pode ser pulado antes de confiar no teto.** Um estágio lendo acima do produto das
+  suas taxas de passagem é o sinal vermelho mais barato que existe, e ele dispara em um funil perfeitamente
+  saudável no instante em que qualquer sujeito consegue contornar um passo — por 17,62% aqui. E ele também
+  fica calado em um funil que *está* sendo contornado, quando os atrasos dos estágios são longos o bastante
+  para a janela de maturidade esconder. Use-o para fazer a pergunta, nunca para respondê-la.
+- **Conte sujeitos, não linhas, e diga o que contou.** Retornos inflam o topo do funil e recuos inflam o
+  meio, então contar linhas enviesa o mesmo relatório nas duas direções ao mesmo tempo. Não existe fator por
+  que dividir.
+- **Diga primeiro toque ou último toque.** Onde um estágio pode ser visitado duas vezes, "tempo até
+  alcançá-lo" são dois números 18% distantes, e `min` contra `max` dentro de um `GROUP BY` é a decisão não
+  documentada mais consequente de um relatório de funil.
+
 ## Rodando
 
 ```bash
@@ -888,6 +1004,8 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | O esforço que vale gastar contra a utilização já carregada, e o ponto a partir do qual a triagem deixa de pagar. |
 | [`sql/c0_stopping.sql`](sql/c0_stopping.sql) | Uma mesa sequencial: a caminhada da posteriori, os dois objetivos de rotulagem sobre a mesma caminhada, e o que a variância do esforço custa. |
 | [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | A melhor regra de parada contra uma olhada fixa, em toda utilização — a comparação que saiu ao contrário. |
+| [`sql/d0_movements.sql`](sql/d0_movements.sql) | Um segundo log de eventos em que sujeitos pulam um estágio, voltam ao anterior e retornam — mesmos sujeitos, mesmas moedas de avanço. |
+| [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | As mesmas leituras tomadas nos dois logs, a forma fechada do passo três, e o que a contagem de linhas faz com o denominador. |
 | [`tests/`](tests) | Dezessete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
@@ -913,7 +1031,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Quinze até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Dezessete até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

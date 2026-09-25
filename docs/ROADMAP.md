@@ -532,6 +532,72 @@ on capacity.
     wave 4's mechanism that produced no effect, and both times the correct response was to ask why the null
     or reversed result was *right*.
 
+## Wave 9 — stages that are not a partition *(complete)*
+
+Waves 1 to 4 all rest on a shape nobody states: a subject occupies one stage at a time, moves forward, and
+stops. That shape is what makes "reached stage k" a well-defined event, "the rate at stage k" a fraction of a
+fixed denominator, and the product of the pass rates an upper bound nothing can exceed. `sql/d0_movements.sql`
+builds a second event log where subjects skip a stage, fall back to the one before, and come back weeks later
+to start again, and `sql/d5_movement_readings.sql` takes the same readings on both logs.
+
+The control is what makes any of it evidence. Entry one attempt one draws salts 7 and 101, which are the salts
+`sql/20_events.sql` was built from, so for every subject whose skip coin came up tails the two logs must agree
+row for row and day for day. All 127122 such rows do, and `tests/assert_movements.sql` fails on a single
+mismatch. Every difference between the logs is a movement and nothing else.
+
+**Result 1 — the ceiling stops being a ceiling.** Wave 1's cheapest diagnostic was that a stage reading above
+the product of its own pass rates proves the reading is not a rate. A first entry reaches step three either by
+passing step two and then three or by skipping step two and then passing three, so the reach is
+[(1-s)*p2 + s]*p3 against a declared ceiling of p2*p3, above it by 1 + s*(1-p2)/p2 for any skip rate at all -
+because the skipper was never subject to the coin the ceiling is built from. `venda` reads 0.2911 against a
+ceiling of 0.2475, 17.62% above a bound it cannot exceed, on a generator obeying every declared rate to four
+standard errors. **The diagnostic fires on a healthy funnel.**
+
+**Result 2 — and it is silent on the funnel that is being bypassed.** `retencao` has the larger derived
+breach of the two, 1.1773 against `venda`'s 1.1467, and its windowed cohort reading is 0.1449 against a
+ceiling of 0.1496. It reads *below* the ceiling, because the maturity window censors the slow walks the skip
+is adding and the two effects cancel. So the diagnostic has both error directions at once. It is not a
+diagnostic; it is the question "can this stage be skipped?", and it cannot tell the answer from a broken
+metric.
+
+**Result 3 — the denominator is not the number of subjects, and the bias has no sign.** A re-entry adds a row
+at the entry stage and a fallback adds one at a middle stage, so counting rows inflates both ends of every
+fraction by different factors. `venda` `negociacao` reads 1.0812 times too high by event counting and
+`retencao` `em-risco` reads 0.9229 times too low, on the same log. A correction factor would need a sign and
+there is not one, which is asserted in both directions so that a change making the bias tidy breaks the build.
+
+**Result 4 — "time to reach a stage" is two numbers.** A fifth of the subjects reaching `venda` `negociacao`
+reach it twice, and the mean first touch and mean last touch are 15.29 and 18.04 days. Nothing in the schema
+records which one a report meant, and `min` versus `max` inside a `GROUP BY` is the most consequential
+undocumented decision in a funnel report.
+
+**Result 5 — the monotone schema cannot hold the log at all.** 174745 rows against 137923 on the same
+population, a ratio of 1.2670: 11195 second entries, 29583 rows on the way back up from a fallback, and 29452
+subject-stages visited more than once. One row per subject per stage is not a storage choice, it is an
+assumption about behaviour.
+
+### Defects found and recorded
+
+16. **A second entry conditioned on the wrong log.** The first version of `sql/d0_movements.sql` decided
+    whether a subject comes back by asking how far it got in the *monotone* log of `sql/20_events.sql`,
+    because a single recursion cannot both produce the messy answer and consume it. It is a convenient
+    substitution and a wrong one: a subject that skips its way to the last stage in the messy log would still
+    be sent back, because the monotone log says it failed. The symptom was a closed form disagreeing with the
+    simulation on two funnels out of six and agreeing on four, which is exactly the shape of a bug that is
+    easy to argue away. The fix was to make the walk a table macro and run it twice, once to produce the first
+    entry and once to consume it. **When a derivation needs a quantity the model has not produced yet, the
+    model runs twice - it does not borrow a similar quantity from somewhere else.**
+17. **A closed form that did not say which population or which horizon.** The derivation
+    1 + s*(1-p2)/p2 is about first entries and about the eventual walk. I checked it against the windowed
+    cohort reading of all entries, which is wrong in two directions at once: a second entry reaching step
+    three pushes the simulation above the formula, and the maturity window - the censoring this entire
+    repository is about - pulls it below. The two partly cancelled, which is why the disagreement surfaced on
+    two funnels rather than on all six, and why it took a restructure and a rederivation to separate. The
+    file now names its population and its horizon in the comment above the table, and publishes the windowed
+    figure beside the first-entry one instead of confusing them. **A closed form that does not state its
+    population and its horizon is not a closed form, it is a slogan** - and the fact that this one was mine,
+    in the wave about unstated assumptions, is the reason it is written down here.
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows

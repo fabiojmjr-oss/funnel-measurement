@@ -40,6 +40,12 @@ real triage desk. The confusion matrix of wave 7 is *derived* from them by an ex
 it arithmetic rather than evidence: it says what would follow from those numbers, and nothing about what any
 organisation's classification accuracy actually is.
 
+**The three movements are declared, not observed.** The skip rate, the fallback rate and the re-entry rate
+of wave 9 — how often a subject bypasses a stage, is sent back to the previous one, or returns weeks later to
+start again — are parameters of `sql/00_parameters.sql`, chosen to make each funnel's failure mode legible.
+No real customer journey, service recovery process, churn-win-back programme or case reopening was measured
+to produce them, and the 45-day return delay is a round number rather than a finding.
+
 **The column no real operation has is the point.** `declared_rate` is the eventual conversion rate the
 generator was built from — the answer key. A real funnel has no such column, which is exactly why a real
 funnel cannot tell which of its four readings is the rate. Every finding here exists because the
@@ -97,6 +103,13 @@ de ela apontar a classe verdadeira e a regra que desempata são parâmetros dest
 nenhuma mesa de triagem real. A matriz de confusão da onda 7 é *derivada* deles por um multinomial exato, o
 que a torna aritmética e não evidência: ela diz o que se seguiria daqueles números, e nada sobre qual é a
 acurácia de classificação de organização alguma.
+
+**Os três movimentos são declarados, não observados.** A taxa de pulo, a taxa de recuo e a taxa de retorno
+da onda 9 — com que frequência um sujeito contorna um estágio, é devolvido ao anterior, ou volta semanas
+depois para começar de novo — são parâmetros de `sql/00_parameters.sql`, escolhidos para deixar legível o modo
+de falha de cada funil. Nenhuma jornada de cliente real, processo de recuperação de serviço, programa de
+recuperação de churn ou reabertura de caso foi medido para produzi-los, e o atraso de retorno de 45 dias é um
+número redondo, não um achado.
 
 **A coluna que nenhuma operação real tem é o ponto.** `declared_rate` é a taxa de conversão eventual a
 partir da qual o gerador foi construído — o gabarito. Um funil real não tem essa coluna, e é exatamente

@@ -300,3 +300,54 @@ CREATE OR REPLACE TABLE queue_thresholds AS
 SELECT * FROM (VALUES
     (0.60), (0.65), (0.70), (0.75), (0.80), (0.85), (0.90), (0.95), (0.99)
 ) AS t(stop_threshold);
+
+-- The three things a real subject does that a monotone staircase cannot represent.
+--
+-- Waves 1 to 4 model a funnel as a walk forward, one step at a time, and a subject that fails a step simply
+-- has no row for it or for anything after. That is the shape of the arithmetic, not the shape of the
+-- process. Real subjects skip stages, go backwards, and come back months later - and a model that drops all
+-- three does not report that it dropped them.
+--
+--   * `skip_rate` - the share of subjects that bypass step two and arrive at step three directly. A lead
+--     that is obviously qualified is not qualified again; a demand that is obviously critical is not
+--     triaged. The skipper is still subject to step three's own coin.
+--   * `fallback_rate` - the share of subjects that, on reaching a step at or beyond the third, return to
+--     the one before it and then have to make their way forward again. A deal in negotiation goes back to
+--     proposal; a resolved ticket is reopened.
+--   * `reentry_rate` - the share of subjects that, having failed to finish, start the funnel again from
+--     step one after a delay. A lost deal comes back next quarter; a churned customer returns.
+--
+-- Each deviation happens at most once per subject. That is a declared bound rather than a realistic one,
+-- and it is there because an unbounded version has no closed form at step three - and step three is where
+-- this wave's finding has to be checked against arithmetic rather than against itself.
+CREATE OR REPLACE TABLE movements AS
+SELECT * FROM (VALUES
+    ('venda',       0.12, 0.18, 0.25),
+    ('ativacao',    0.08, 0.10, 0.15),
+    ('retencao',    0.05, 0.22, 0.40),
+    ('resgate',     0.20, 0.08, 0.35),
+    ('atendimento', 0.15, 0.30, 0.10),
+    ('demanda',     0.10, 0.14, 0.20)
+) AS t(funnel, skip_rate, fallback_rate, reentry_rate);
+
+CREATE OR REPLACE TABLE movement_params AS
+SELECT * FROM (VALUES
+    ('reentry_delay_days', 45.0, 'Mean wait before a failed subject starts again, drawn from the declared exponential.'),
+    ('fallback_delay_days', 6.0, 'Mean wait on the way back to the previous stage, and again on the way forward.')
+) AS t(key, value, note);
+
+-- The streams the messy walk draws from.
+--
+-- A subject can walk its funnel up to twice - once on its first entry and once if it comes back - and
+-- within each entry it can make up to two attempts at the stages beyond a fallback. Each of those four
+-- combinations needs its own pair of streams, or a subject that goes back and tries again meets the coin
+-- that already decided its fate and the second attempt is not an attempt at all.
+--
+-- Declaring them here rather than deriving them inline is the same discipline as every other salt in this
+-- file: tests/assert_generator.sql checks that the streams this repository actually draws from are
+-- independent, and it can only check the ones it can see.
+CREATE OR REPLACE TABLE walk_salts AS
+SELECT * FROM (VALUES
+    (1, 1,    7,  101), (1, 2, 2221, 2251),
+    (2, 1, 2311, 2347), (2, 2, 3371, 3373)
+) AS t(entry, attempt, pass_salt, lag_salt);

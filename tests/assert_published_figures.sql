@@ -422,7 +422,41 @@ WITH expected(what, detail, value) AS (
     ('sweep points inside the horizon',       'count',         36.0000),
     ('unbiased inside the horizon',           'count',          6.0000),
     ('sweep points above one inside',         'count',          7.0000),
-    ('sweep points below one inside',         'count',         23.0000)
+    ('sweep points below one inside',         'count',         23.0000),
+
+    -- Wave 9: stages that are not a partition.
+    ('movement control rows',   'non-skippers',         127122.0),
+    ('movement messy events',   'all',                  174745.0),
+    ('movement monotone events','observed',             137923.0),
+    ('movement events ratio',   'messy over monotone',       1.2670),
+    ('movement second entries', 'events',                11195.0),
+    ('movement after fallback', 'events',                29583.0),
+    ('movement stages twice',   'subject stages',        29452.0),
+    ('movement skipped',        'subjects',               5578.0),
+    ('movement fell back',      'subjects',              10173.0),
+    ('movement returned',       'subjects',               4460.0),
+
+    ('movement over ceiling',   'messy venda 3',             1.1762),
+    ('movement over ceiling',   'messy venda 4',             1.1437),
+    ('movement over ceiling',   'messy venda 5',             1.0250),
+    ('movement over ceiling',   'monotone venda 3',          0.9590),
+    ('movement over ceiling',   'messy retencao 3',          0.9686),
+    ('movement over ceiling',   'monotone retencao 3',       0.6853),
+
+    ('movement derived reach',  'venda',                     0.2838),
+    ('movement first entry',    'venda',                     0.2764),
+    ('movement derived ratio',  'venda',                     1.1467),
+    ('movement derived ratio',  'retencao',                  1.1773),
+    ('movement windowed',       'venda',                     0.2911),
+    ('movement windowed',       'retencao',                  0.1449),
+    ('movement window gap',     'retencao',                 -0.0250),
+
+    ('movement event over subject', 'venda 3',               1.0594),
+    ('movement event over subject', 'venda 4',               1.0812),
+    ('movement event over subject', 'retencao 2',            0.9229),
+    ('movement events per subject', 'venda 4',               1.2256),
+    ('movement touch gap',      'venda 4',                   2.7503),
+    ('movement visited twice',  'venda 4',                   0.2049),
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -788,6 +822,40 @@ measured(what, detail, value) AS (
         round(stopping_over_constant, 4) FROM stopping_versus_constant
     UNION ALL SELECT 'stopping spread cost', 'worst',
         round(max(residual_work / residual_work_if_no_spread), 4) FROM sequential_capacity
+    UNION ALL SELECT 'movement control rows', 'non-skippers', count(*)::DOUBLE FROM messy_walk
+        WHERE entry = 1 AND attempt = 1
+          AND subject_id IN (SELECT subject_id FROM movement_draws WHERE NOT skips)
+    UNION ALL SELECT 'movement messy events', 'all', messy_events::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement monotone events', 'observed', monotone_events::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement events ratio', 'messy over monotone', round(events_ratio, 4)
+        FROM movement_dropped
+    UNION ALL SELECT 'movement second entries', 'events', second_entry_events::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement after fallback', 'events', after_fallback_events::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement stages twice', 'subject stages', stages_visited_twice::DOUBLE
+        FROM movement_dropped
+    UNION ALL SELECT 'movement skipped', 'subjects', subjects_that_skipped::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement fell back', 'subjects', subjects_that_fell_back::DOUBLE FROM movement_dropped
+    UNION ALL SELECT 'movement returned', 'subjects', subjects_that_returned::DOUBLE FROM movement_dropped
+
+    UNION ALL SELECT 'movement over ceiling', 'messy ' || funnel || ' ' || step,
+        round(messy_over_ceiling, 4) FROM movement_reach
+    UNION ALL SELECT 'movement over ceiling', 'monotone ' || funnel || ' ' || step,
+        round(monotone_over_ceiling, 4) FROM movement_reach
+
+    UNION ALL SELECT 'movement derived reach', funnel, round(derived_reach, 4) FROM movement_closed_form
+    UNION ALL SELECT 'movement first entry', funnel, round(simulated_reach, 4) FROM movement_closed_form
+    UNION ALL SELECT 'movement derived ratio', funnel, round(derived_over_ceiling, 4)
+        FROM movement_closed_form
+    UNION ALL SELECT 'movement windowed', funnel, round(windowed_reach, 4) FROM movement_closed_form
+    UNION ALL SELECT 'movement window gap', funnel, round(window_reentry_gap, 4) FROM movement_closed_form
+
+    UNION ALL SELECT 'movement event over subject', funnel || ' ' || step, round(event_over_subject, 4)
+        FROM movement_event_counted
+    UNION ALL SELECT 'movement events per subject', funnel || ' ' || step, round(events_per_subject, 4)
+        FROM movement_event_counted
+    UNION ALL SELECT 'movement touch gap', funnel || ' ' || step, round(gap_days, 4) FROM movement_timing
+    UNION ALL SELECT 'movement visited twice', funnel || ' ' || step, round(share_visited_twice, 4)
+        FROM movement_timing
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

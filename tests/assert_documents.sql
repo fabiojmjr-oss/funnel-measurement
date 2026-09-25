@@ -31,7 +31,9 @@ words(n, english, portuguese) AS (
            (9, 'Nine so far', 'Nove até aqui'), (10, 'Ten so far', 'Dez até aqui'),
            (11, 'Eleven so far', 'Onze até aqui'), (12, 'Twelve so far', 'Doze até aqui'),
            (13, 'Thirteen so far', 'Treze até aqui'), (14, 'Fourteen so far', 'Quatorze até aqui'),
-           (15, 'Fifteen so far', 'Quinze até aqui')
+           (15, 'Fifteen so far', 'Quinze até aqui'),
+           (16, 'Sixteen so far', 'Dezesseis até aqui'),
+           (17, 'Seventeen so far', 'Dezessete até aqui')
 ),
 figures(figure) AS (
     VALUES ('1.9826'), ('1.6988'), ('0.9522'), ('0.9907'), ('0.9218'), ('0.9524'),
@@ -102,7 +104,13 @@ figures(figure) AS (
            ('4.8597'), ('3.5532'), ('3.2911'), ('2.0158'),
            ('0.7872'), ('0.5590'), ('0.7307'), ('0.6789'), ('7.6623'), ('7.4580'),
            ('1.0144'), ('1.0216'), ('1.0439'), ('1.0569'), ('1.0128'),
-           ('1.0015'), ('0.6461'), ('4.4'), ('1.4')
+           ('1.0015'), ('0.6461'), ('4.4'), ('1.4'),
+           -- Wave 9, stages that are not a partition.
+           ('127122'), ('174745'), ('137923'), ('1.2670'), ('11195'), ('29583'), ('29452'),
+           ('0.2374'), ('0.2911'), ('0.2475'), ('0.9590'), ('1.1762'), ('17.62'),
+           ('1.1467'), ('0.2764'), ('0.2838'), ('1.1773'), ('0.1449'), ('0.1496'),
+           ('1.2009'), ('1.0594'), ('1.2256'), ('1.0812'), ('1.1585'), ('0.9229'),
+           ('15.29'), ('18.04'), ('2.7503'), ('0.2049')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -131,7 +139,10 @@ UNION ALL
 -- Wave 6 declares two more things nobody measured, so the disclaimer has to say so in both languages.
 SELECT 'the disclaimer does not declare the triage matrix as invented', phrase
 FROM (VALUES ('confusion matrix'), ('matriz de confusão'),
-             ('urgency weight'), ('peso de urgência')) AS t(phrase), disclaimer
+             ('urgency weight'), ('peso de urgência'),
+             ('skip rate'), ('taxa de pulo'),
+             ('fallback rate'), ('taxa de recuo'),
+             ('re-entry rate'), ('taxa de retorno')) AS t(phrase), disclaimer
 WHERE NOT contains(disclaimer.content, phrase)
 
 UNION ALL
@@ -183,19 +194,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 17 AND NOT contains(english.content, 'Seventeen model files')
+WHERE n = 19 AND NOT contains(english.content, 'Nineteen model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 17 AND NOT contains(english.content, 'seventeen assertion files')
+WHERE n = 18 AND NOT contains(english.content, 'eighteen assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 17 AND NOT contains(portuguese.content, 'Dezessete arquivos de modelo')
+WHERE n = 19 AND NOT contains(portuguese.content, 'Dezenove arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 17 AND NOT contains(portuguese.content, 'dezessete de asserção')
+WHERE n = 18 AND NOT contains(portuguese.content, 'dezoito de asserção')
 
 UNION ALL
 -- The repository's own code is written in English, and until wave 7 nothing checked it.

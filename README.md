@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Seventeen model files, seventeen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Nineteen model files, eighteen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -795,6 +795,109 @@ doing, and it is worth naming so that a reader knows when to care.
 
 > **Look once. Escalate on any indication. Spend the argument on capacity.**
 
+## And the stage that is not a stage: subjects that skip, fall back and come back
+
+Every reading in waves 1 to 4 rests on a shape nobody states out loud: a subject occupies one stage at a
+time, moves forward, and stops. That is what makes "reached stage k" a well-defined event, "the rate at
+stage k" a fraction of a fixed denominator, and the product of the pass rates an upper bound nothing can
+exceed. [`sql/d0_movements.sql`](sql/d0_movements.sql) builds a second event log where subjects break all
+three: some **skip** a stage, some **fall back** to the one before, and some **come back** weeks later and
+start again.
+
+Same subjects, same arrival days, same forward coins. Entry one attempt one draws the salts the monotone log
+of [`sql/20_events.sql`](sql/20_events.sql) was built from, so the control is exact rather than approximate:
+for every subject whose skip coin came up tails, **all 127122 rows match to the day**, and
+[`tests/assert_movements.sql`](tests/assert_movements.sql) fails if a single one does not. Every difference
+between the two logs is a movement, and nothing else.
+
+The size of the difference first: **174745 rows against 137923**, a ratio of **1.2670** on the same
+population. 11195 of the extra rows are second entries, 29583 are the way back up from a fallback, and
+29452 subject-stages are visited more than once. A schema with one row per subject per stage cannot hold
+any of them.
+
+### The ceiling stops being a ceiling
+
+Wave 1's cheapest diagnostic was that **a stage reading above the product of its own pass rates proves the
+reading is not a rate.** It costs one query and it was the most portable thing in this repository. Here is
+what a skip does to it.
+
+A first entry reaches step three either by passing step two and then step three, or by skipping step two and
+then passing step three. So the reach is `[(1-s)·p₂ + s]·p₃` against a declared ceiling of `p₂·p₃`, which is
+above it by exactly
+
+```
+1 + s·(1 - p₂)/p₂
+```
+
+for any skip rate at all — because **the skipper was never subject to the coin the ceiling is built from.**
+
+| `venda`, mature cohorts | monotone log | messy log | declared ceiling |
+| --- | --- | --- | --- |
+| `proposta` | 0.2374 | **0.2911** | 0.2475 |
+| ÷ ceiling | 0.9590 | **1.1762** | 1.0 |
+
+The messy reading is **17.62% above a bound it is not allowed to exceed**, on a generator that is obeying
+every declared rate to four standard errors. The derived ratio for `venda` is **1.1467** and the simulated
+first-entry reach is **0.2764** against a derivation of **0.2838** — inside tolerance, which is four
+standard errors of the share and not a fixed epsilon.
+
+So the diagnostic produces a false alarm on a healthy funnel. That would be bad enough. It is worse than
+that, and the second half is the finding.
+
+### And it is silent on the funnel that is being bypassed
+
+`retencao` is skipped at only 0.05, but its step-two pass rate is low, so the derived breach is **1.1773** —
+*larger* than `venda`'s. Its windowed cohort reading is **0.1449** against a ceiling of **0.1496**. It reads
+*below* the ceiling. The maturity window this whole repository is about censors the slow walks the skip is
+adding, and the two effects cancel to something under one.
+
+> **One diagnostic, both error directions at once: it fires on a funnel that is fine and stays quiet on a
+> funnel that is being bypassed. It is not a diagnostic. It is a question — "can this stage be skipped?" —
+> and it cannot tell the answer from a broken metric.**
+
+I got this wrong twice while building it, in both directions, which is why the derivation now names its
+population and its horizon in the file itself. Defects 16 and 17 in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### The denominator is not the number of subjects
+
+A re-entry adds a second row at the entry stage. A fallback adds a second row at a middle stage. A funnel
+read by counting rows inflates **both ends** of every fraction, by different factors, and which one wins
+depends on where subjects gave up.
+
+| Stage | events ÷ subjects | event-counted ÷ subject-counted |
+| --- | --- | --- |
+| `venda` `proposta` | 1.2009 | **1.0594** |
+| `venda` `negociacao` | 1.2256 | **1.0812** |
+| `retencao` `em-risco` | 1.1585 | **0.9229** |
+
+The bias has **no sign**. A correction factor would need one, and the same event log produces
+overstatement and understatement at different stages. `tests/assert_movements.sql` asserts that both
+directions occur, so a future change that makes the bias tidy breaks the build.
+
+### And "time to reach" is two numbers
+
+| `venda` `negociacao` | |
+| --- | --- |
+| Mean first touch | 15.29 days |
+| Mean last touch | 18.04 days |
+| Gap | **2.7503 days** |
+| Share of subjects that visited it twice | **0.2049** |
+
+A fifth of the subjects reach that stage twice, and the two honest answers to "how long does it take to
+reach negotiation" are 18% apart. Nothing in the schema records which one a report meant, and `min` versus
+`max` in a `GROUP BY` is not a decision anybody documents.
+
+### Waves 1 to 4, revisited
+
+| | |
+| --- | --- |
+| Wave 1 | A funnel rate is a cohort statement, and the window reading is the censoring. |
+| Wave 4 | The ceiling is the cheapest check there is. |
+| Wave 9 | And it holds only while a stage is a stage. Skips break the bound; re-entries break the denominator; fallbacks break the clock. |
+
+> **Before reading any funnel, ask whether a subject can be in two stages, in none, or in the same one
+> twice. If it can, the number on the dashboard has no denominator.**
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -850,6 +953,18 @@ doing, and it is worth naming so that a reader knows when to care.
   largest posterior times its urgency beats committing to the largest posterior at every threshold — while
   getting *fewer* labels right.
 
+- **Ask whether a stage can be skipped before trusting the ceiling.** A stage reading above the product of
+  its pass rates is the cheapest red flag there is, and it fires on a perfectly healthy funnel the moment
+  any subject can bypass a step — by 17.62% here. It also stays silent on a funnel that *is* being bypassed,
+  when the stage delays are long enough for the maturity window to hide it. Use it to ask the question, never
+  to answer it.
+- **Count subjects, not rows, and say which you counted.** Re-entries inflate the top of the funnel and
+  fallbacks inflate the middle, so row-counting biases the same report in both directions at once. There is
+  no factor to divide by.
+- **Say first touch or last touch.** Where a stage can be visited twice, "time to reach it" is two numbers
+  18% apart, and `min` versus `max` inside a `GROUP BY` is the most consequential undocumented decision in
+  a funnel report.
+
 ## Running it
 
 ```bash
@@ -881,6 +996,8 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | The effort worth spending against the utilisation already carried, and the point past which triage stops paying at all. |
 | [`sql/c0_stopping.sql`](sql/c0_stopping.sql) | A sequential desk: the posterior walk, both labelling objectives over the same walk, and what the effort's variance costs. |
 | [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | The best stopping rule against one fixed look, at every utilisation — the comparison that came out the other way. |
+| [`sql/d0_movements.sql`](sql/d0_movements.sql) | A second event log where subjects skip a stage, fall back to the one before, and come back — same subjects, same forward coins. |
+| [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | The same readings taken on both logs, the step-three closed form, and what row-counting does to the denominator. |
 | [`tests/`](tests) | Seventeen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
@@ -905,7 +1022,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Fifteen so far, in
+**And defects are recorded rather than quietly fixed.** Seventeen so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,
