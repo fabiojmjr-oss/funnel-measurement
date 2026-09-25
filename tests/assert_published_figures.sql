@@ -271,6 +271,36 @@ WITH expected(what, detail, value) AS (
     ('effort feasible looks', '0.88',    4.0),
     ('effort feasible looks', '0.95',    1.0),
 
+    -- Wave 8, the stopping rule. The effort it spends, per class.
+    ('stopping looks', 'cost 0.70 p1',   2.3810),
+    ('stopping looks', 'cost 0.70 p2',   2.4352),
+    ('stopping looks', 'cost 0.70 p3',   1.5747),
+    ('stopping looks', 'cost 0.80 p1',   3.6572),
+    ('stopping looks', 'cost 0.80 p2',   2.6283),
+    ('stopping looks', 'cost 0.80 p3',   1.8143),
+    ('stopping looks', 'cost 0.90 p1',   4.8597),
+    ('stopping looks', 'cost 0.90 p2',   3.5532),
+    ('stopping looks', 'cost 0.90 p3',   3.2911),
+    ('stopping effort ratio', 'critical over improvement at 0.80', 2.0158),
+
+    -- The two objectives at the shared optimum.
+    ('stopping labels correct', 'accuracy 0.65', 0.7872),
+    ('stopping labels correct', 'cost 0.65',     0.7307),
+    ('stopping critical correct', 'accuracy 0.65', 0.5590),
+    ('stopping critical correct', 'cost 0.65',     0.6789),
+    ('stopping cost', 'accuracy 0.65',   7.6623),
+    ('stopping cost', 'cost 0.65',       7.4580),
+
+    -- Against one fixed look, at every utilisation.
+    ('stopping over constant', 'cost 0.40', 1.0144),
+    ('stopping over constant', 'cost 0.60', 1.0216),
+    ('stopping over constant', 'cost 0.78', 1.0439),
+    ('stopping over constant', 'cost 0.82', 1.0569),
+    ('stopping over constant', 'cost 0.88', 1.0128),
+
+    -- And what the spread of the effort costs.
+    ('stopping spread cost', 'worst',    1.0015),
+
     -- The sales funnel shown stage by stage.
     ('window_rate',   'venda qualificado',        0.4267),
     ('cohort_rate',   'venda qualificado',        0.4464),
@@ -741,6 +771,23 @@ measured(what, detail, value) AS (
         FROM effort_optimum WHERE tie_break = 'urgent'
     UNION ALL SELECT 'effort feasible looks', base_utilisation::VARCHAR, most_looks_feasible::DOUBLE
         FROM effort_optimum WHERE tie_break = 'urgent'
+
+    UNION ALL SELECT 'stopping looks', rule || ' ' || stop_threshold || ' ' || priority,
+        round(mean_looks, 4) FROM sequential_looks
+    UNION ALL SELECT 'stopping effort ratio', 'critical over improvement at 0.80',
+        round(max(mean_looks) FILTER (WHERE true_rank = 1)
+              / max(mean_looks) FILTER (WHERE true_rank = 3), 4)
+        FROM sequential_looks WHERE rule = 'cost' AND stop_threshold = 0.80
+    UNION ALL SELECT 'stopping labels correct', rule || ' ' || stop_threshold, round(labels_correct, 4)
+        FROM sequential_cost
+    UNION ALL SELECT 'stopping critical correct', rule || ' ' || stop_threshold, round(critical_correct, 4)
+        FROM sequential_cost
+    UNION ALL SELECT 'stopping cost', rule || ' ' || stop_threshold, round(weighted_waiting, 4)
+        FROM sequential_cost
+    UNION ALL SELECT 'stopping over constant', rule || ' ' || base_utilisation,
+        round(stopping_over_constant, 4) FROM stopping_versus_constant
+    UNION ALL SELECT 'stopping spread cost', 'worst',
+        round(max(residual_work / residual_work_if_no_spread), 4) FROM sequential_capacity
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

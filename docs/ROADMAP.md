@@ -460,6 +460,78 @@ once a classification step sits in front of them — see "Still open".
     ratio, and the generator assertion that tested streams nobody draws from. **A rule that is stated and
     not compiled is a rule that is already broken somewhere.**
 
+## Wave 8 — the sophistication that loses to one look *(complete)*
+
+Wave 7's effort is a constant. `sql/c0_stopping.sql` makes it a decision: after each look the posterior over
+the three classes is recomputed from Bayes with the class shares as the prior, and the desk commits as soon
+as the largest posterior crosses a declared threshold. The threshold parameterises the whole family in one
+number, because the largest prior share is 0.60 and any threshold at or below it stops before the first
+look - so "do not triage" sits inside this policy rather than beside it.
+
+This wave was built to show that the stopping rule wins. It does not, at any utilisation, and the reason is
+worth more than the result would have been.
+
+**Result 1 — the effort goes where it is needed, exactly as designed.** At the declared 0.80 threshold the
+desk spends 2.0158 times as many looks confirming a critical demand as an improvement - 3.6572 against
+1.8143 - and that is correctness rather than carelessness, because the prior is 0.10 against `critico` and
+committing to it needs more evidence. The cost is that `critico` is already the slowest class to handle at
+1.2381 days and is now also the slowest to classify. **The class that blocks the queue most is the class
+most expensive to recognise**, and the two compound.
+
+**Result 2 — the accuracy-maximising rule labels the critical class worse than a single raw look does.** At
+its own optimum it recognises `critico` 0.5590 of the time, against 0.7000 from one look that simply reports
+what it saw. Bayes shrinks toward the base rate; the base rate says "probably not critical"; and wave 6
+established that failing to recognise a critical demand costs 6.6 times what escalating a routine one does.
+**Every unit of statistical correctness is paid for in the currency the operation cares about.**
+
+**Result 3 — making the rule cost-aware confirms the diagnosis and gets fewer labels right.** Committing to
+the class with the largest posterior *times its declared urgency* beats committing to the largest posterior
+at every threshold above the degenerate one - 7.4580 against 7.6623 at the shared optimum - while its
+overall label accuracy falls from 0.7872 to 0.7307. Fewer correct labels, less waiting. Both halves are
+asserted, because either one alone would be a coincidence.
+
+**Result 4 — and both lose to one fixed look, at every utilisation swept.** The margin runs from 1.0144 at
+0.40 utilisation to 1.0569 at 0.82. At 0.40, where looking costs almost nothing, a single raw look still
+beats the best stopping rule by 1.4% - which is the sharp form of the finding, because it shows the rule's
+disadvantage is not its cost. **It is its objective. Using the prior is what makes it lose, and the prior
+does not get cheaper when the server empties.** That is why good triage protocols are written as rule-out
+criteria rather than as probability estimates: "escalate if any indicator of severity is present" is the
+raw-look rule, and it is worse at labelling and better at not missing, of which only the second is on the
+scoreboard.
+
+**Result 5 — the variance of the effort is a real cost and a negligible one here.** The effort is now an
+outcome, so it has a spread, and the residual work charges the second moment of the service time. A rule
+that looks a variable number of times therefore costs more than one that looks E[K] times exactly. The
+mechanism is real and asserted in direction; the magnitude is 1.0015 at worst, a fifth of one percent,
+because a look costs 0.02 days against a handling time of 0.6461. It would matter if looking were expensive
+relative to doing, and it is named so a reader knows when to care.
+
+**Waves 5 to 8 close on one line.** No order reduces the total waiting; the label the order sorts by is not
+the class; getting the label right costs the capacity that makes labels matter; and the sophisticated way of
+getting it right is worse than the crude way. Look once, escalate on any indication, and spend the argument
+on capacity.
+
+### Defects found and recorded
+
+14. **A stopping rule written twice is two stopping rules.** The first version of the walk evaluated "has the
+    posterior crossed the threshold" in two places - once as the condition for expanding a state and once as
+    the condition for counting it - on the reasoning that the same expression must give the same answer. The
+    probability mass then came out between 0.9 and 1.1 instead of 1, so paths were being both expanded and
+    counted, or neither. I did not isolate which of the two evaluations diverged, and that is the point: the
+    fix was not to find the discrepancy but to make it impossible, by computing the flag once and carrying
+    it as a column so the partition is structural. Worth recording because the symptom was quiet - the
+    matrix still had rows, the numbers still looked like probabilities, and only summing the mass showed it.
+    **A predicate that decides membership of two complementary sets has to be evaluated once.**
+15. **A prediction that came out backwards, recorded as it came out.** I built this wave expecting the
+    stopping rule to beat wave 7's constant effort where there is slack, on the reasoning that cheap capacity
+    makes accuracy affordable. It never beats it - not at 0.40 utilisation, not anywhere - and the assertion
+    in `tests/assert_stopping.sql` now says so explicitly, so that a future change which makes the stopping
+    rule win will break the build and force the text to be rewritten rather than quietly contradicting it.
+    The reasoning was wrong in a way worth naming: I priced the rule's effort and forgot to price its
+    objective. This is the second time in this repository that a wave's expected direction was wrong, after
+    wave 4's mechanism that produced no effect, and both times the correct response was to ask why the null
+    or reversed result was *right*.
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -530,9 +602,15 @@ once a classification step sits in front of them — see "Still open".
   before the label exists, so it blocks the queue earlier and costs more. Charging it properly makes the
   arrivals into each label non-Poisson, which is exactly the assumption Cobham's formula needs, so it wants
   either a simulation as the answer key or a derivation this file does not have.
-- **A desk that chooses its effort per demand.** Wave 7's effort is a constant: every demand gets the same
-  number of looks. A real desk looks harder at the ones that look ambiguous, which is a sequential decision
-  with a stopping rule, and the stopping rule is where most of the available gain probably is.
+- **A stopping rule whose objective is the queue rather than the label.** Wave 8 compares an
+  accuracy-maximising rule with one weighted by declared urgency, and the second is better. Neither is
+  optimal: the truly cost-optimal rule would stop when the expected cost of another look exceeds the
+  expected cost of committing now, and both of those depend on the waiting the policy itself produces. That
+  is a fixed point, and solving it needs an iteration this repository has no room for in pure SQL.
+- **A look whose accuracy depends on the demand.** Every look here is right with the same probability
+  whatever it is looking at. Real ambiguity is a property of the demand, not of the observer, so some
+  demands are genuinely undecidable and more looking cannot settle them - which changes the stopping rule
+  from "look until sure" to "look until sure or until sure it will not become clear".
 - **Escalation as a repeated decision.** A demand's label is set once and never revisited. Real operations
   re-triage: things get escalated after they have waited, which couples the label to the queue state and
   makes the whole system a feedback loop rather than a sorting.

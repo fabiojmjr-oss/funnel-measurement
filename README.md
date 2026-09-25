@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Fifteen model files, sixteen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Seventeen model files, seventeen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -699,6 +699,102 @@ rather than charged as its own stage at intake. That is the conservative choice,
 triage is paid *before* the sorting happens, so it blocks the queue earlier than this model does and costs
 more, not less.
 
+## And the sophistication that loses to one look
+
+Wave 7 spends the same effort on every demand, which no desk does. A real one stops early on the obvious
+ones and keeps looking at the ambiguous ones. [`sql/c0_stopping.sql`](sql/c0_stopping.sql) builds that: after
+each look the posterior over the three classes is recomputed from Bayes, and the desk commits as soon as the
+largest posterior crosses a declared threshold. The threshold parameterises the whole range in one number —
+the largest prior share is 0.60, so **"do not triage" is not a separate policy here, it is the low end of
+this one.**
+
+This wave was built to show that the stopping rule wins. It does not, and the reason is worth more than the
+result would have been.
+
+### The effort does go where it is needed
+
+| Threshold | `critico` | `padrao` | `melhoria` |
+| --- | --- | --- | --- |
+| 0.70 | 2.3810 looks | 2.4352 | 1.5747 |
+| 0.80 | **3.6572 looks** | 2.6283 | **1.8143** |
+| 0.90 | 4.8597 looks | 3.5532 | 3.2911 |
+
+At the declared 0.80 the desk spends **2.0158 times** as many looks confirming a critical demand as an
+improvement, and it is not being careless — it is being correct. The prior is 0.10 against `critico`, so
+committing to it requires more evidence. That part of the design works exactly as intended.
+
+But look at what it costs. `critico` is already the slowest class to handle, at 1.2381 days. It is now also
+the slowest to classify. **The class that blocks the queue most is the class most expensive to recognise**,
+and the two compound.
+
+### And the labels come out worse where it matters
+
+| Rule at its own optimum (θ = 0.65) | labels correct | `critico` correct | cost |
+| --- | --- | --- | --- |
+| Maximise accuracy | **0.7872** | **0.5590** | 7.6623 |
+| Minimise expected cost | 0.7307 | 0.6789 | **7.4580** |
+| *One fixed look (wave 7)* | *0.7000* | *0.7000* | ***7.1449*** |
+
+Three things, and the third is the wave.
+
+**The accuracy-maximising rule recognises the critical class 0.5590 of the time** — worse than the 0.7000 a
+single raw look achieves by simply reporting what it saw. Bayes shrinks toward the base rate; the base rate
+says "probably not critical"; and wave 6 established that failing to recognise a critical demand costs 6.6
+times what escalating a routine one costs. **Every unit of statistical correctness is paid for in the
+currency the operation cares about.**
+
+**Making the rule cost-aware confirms the diagnosis.** Commit to the class with the largest posterior
+*times its declared urgency* instead of the largest posterior, and the cost falls from 7.6623 to 7.4580 —
+better at every threshold above the degenerate one — while getting **fewer labels right**, 0.7307 against
+0.7872. *Fewer correct labels, less waiting.* Both halves of that are asserted.
+
+**And both still lose to one fixed look.** Not by much — 4.4% for the cost-aware rule — but they lose.
+
+### At every utilisation, including the ones with slack
+
+| Utilisation before triage | best threshold | constant looks | stopping ÷ constant |
+| --- | --- | --- | --- |
+| 0.40 | 0.65 | 1 | 1.0144 |
+| 0.60 | 0.65 | 1 | 1.0216 |
+| 0.78 | 0.65 | 1 | 1.0439 |
+| 0.82 | 0.65 | 1 | **1.0569** |
+| 0.88 | 0.60 | 1 | 1.0128 |
+| 0.89 and above | 0.60 | 0 | 1.0000 |
+
+I expected the sequential rule to win where there is slack, on the reasoning that cheap capacity makes
+accuracy affordable. It never wins. At 0.40 utilisation — where looking costs almost nothing — one raw look
+still beats the best stopping rule by 1.4%, because the rule's disadvantage is not its cost. It is its
+objective. Using the prior is what makes it lose, and the prior does not get cheaper when the server
+empties.
+
+> **A single raw look, escalating on whatever it reports, beats every Bayesian refinement of it — because
+> the refinement shrinks toward a base rate that is against the one class you cannot afford to miss.**
+
+That is why good triage protocols are written as rule-out criteria and not as probability estimates. "If any
+indicator of severity is present, escalate" is the raw-look rule. "Estimate the probability and act on the
+most likely case" is the rule this wave shows losing. The first is worse at labelling and better at not
+missing, and only the second of those is on the scoreboard.
+
+### One cost that is real and negligible
+
+Because the effort is now an outcome rather than a parameter, it has a variance — and Pollaczek and
+Khinchine's residual work charges the *second* moment of the service time, of which the triage time is part.
+So a rule that looks a variable number of times costs more than a rule that looks E[K] times exactly. The
+mechanism is real; the size, here, is not: **1.0015 at worst**, a fifth of one percent, because a look
+costs 0.02 days against a handling time of 0.6461. It would matter if looking were expensive relative to
+doing, and it is worth naming so that a reader knows when to care.
+
+### Waves 5 to 8
+
+| | |
+| --- | --- |
+| Wave 5 | No priority order reduces the total waiting. It only decides who bears it. |
+| Wave 6 | The label the order sorts by is not the class, and getting it wrong is a transfer, not a loss. |
+| Wave 7 | Getting it right costs the capacity that makes labels matter. Past 0.89 utilisation, do not triage. |
+| Wave 8 | And the sophisticated way of getting it right is worse than the crude way, at every utilisation. |
+
+> **Look once. Escalate on any indication. Spend the argument on capacity.**
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -746,6 +842,13 @@ more, not less.
   appears in no policy document.
 - **Prefer an odd number of checks to an even one.** Going from three to four costs a full look of capacity
   and buys the bottom class exactly nothing — 0.7840 either way.
+- **Write the protocol as a rule-out, not as an estimate.** "Escalate if any indicator of severity is
+  present" beats "estimate the probability and act on the most likely case" here at every utilisation from
+  0.40 to 0.95. A probability estimate shrinks toward the base rate, and the base rate is against the class
+  whose misclassification costs the most.
+- **If you must weigh evidence, weigh it by cost and not by likelihood.** Committing to the class with the
+  largest posterior times its urgency beats committing to the largest posterior at every threshold — while
+  getting *fewer* labels right.
 
 ## Running it
 
@@ -776,7 +879,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham on the labels composed onto the classes, both error directions swept, all six orders enumerated, and the rule that names the winner. |
 | [`sql/b0_effort.sql`](sql/b0_effort.sql) | Accuracy derived from effort by an exact multinomial, checked against a draw; what the looking costs the server; and the interior optimum. |
 | [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | The effort worth spending against the utilisation already carried, and the point past which triage stops paying at all. |
-| [`tests/`](tests) | Sixteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/c0_stopping.sql`](sql/c0_stopping.sql) | A sequential desk: the posterior walk, both labelling objectives over the same walk, and what the effort's variance costs. |
+| [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | The best stopping rule against one fixed look, at every utilisation — the comparison that came out the other way. |
+| [`tests/`](tests) | Seventeen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -800,7 +905,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Thirteen so far, in
+**And defects are recorded rather than quietly fixed.** Fifteen so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

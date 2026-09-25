@@ -274,3 +274,29 @@ SELECT * FROM (VALUES
     ('urgent',  'A tie goes to the lower rank, that is, to the more urgent class.'),
     ('lenient', 'A tie goes to the higher rank, that is, to the less urgent class.')
 ) AS t(tie_break, note);
+
+-- The desk that decides how hard to look, demand by demand.
+--
+-- Wave 7's effort is a constant: every demand gets the same number of looks, whether the first look settled
+-- the matter or left it wide open. No desk works that way either. A real one stops early on the obvious
+-- ones and keeps looking at the ambiguous ones, which makes triage a sequential decision with a stopping
+-- rule - and the stopping rule is where the remaining gain is.
+--
+-- The rule declared here is the natural one. After each look the posterior over the three classes follows
+-- from Bayes with the class shares as the prior and `look_accuracy` as the likelihood; the desk stops when
+-- the largest posterior crosses `stop_threshold`, and otherwise looks again until the budget runs out.
+--
+-- The threshold parameterises the whole range in one number, which the integer effort of wave 7 could not.
+-- The prior's largest share is 0.60, so any threshold at or below it stops before the first look and labels
+-- every demand alike - that is, "do not triage" is not a separate policy here, it is the low end of this
+-- one.
+CREATE OR REPLACE TABLE queue_stopping AS
+SELECT * FROM (VALUES
+    ('look_budget',     8.00, 'Most looks the desk may take on one demand before it has to commit.'),
+    ('declared_threshold', 0.80, 'Posterior the desk waits for before committing, in the base scenario.')
+) AS t(key, value, note);
+
+CREATE OR REPLACE TABLE queue_thresholds AS
+SELECT * FROM (VALUES
+    (0.60), (0.65), (0.70), (0.75), (0.80), (0.85), (0.90), (0.95), (0.99)
+) AS t(stop_threshold);

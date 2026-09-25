@@ -30,7 +30,8 @@ words(n, english, portuguese) AS (
            (7, 'Seven so far', 'Sete até aqui'), (8, 'Eight so far', 'Oito até aqui'),
            (9, 'Nine so far', 'Nove até aqui'), (10, 'Ten so far', 'Dez até aqui'),
            (11, 'Eleven so far', 'Onze até aqui'), (12, 'Twelve so far', 'Doze até aqui'),
-           (13, 'Thirteen so far', 'Treze até aqui')
+           (13, 'Thirteen so far', 'Treze até aqui'), (14, 'Fourteen so far', 'Quatorze até aqui'),
+           (15, 'Fifteen so far', 'Quinze até aqui')
 ),
 figures(figure) AS (
     VALUES ('1.9826'), ('1.6988'), ('0.9522'), ('0.9907'), ('0.9218'), ('0.9524'),
@@ -95,7 +96,13 @@ figures(figure) AS (
            ('41.6458'), ('8.5145'),
            ('0.9135'), ('0.9790'), ('1.1133'), ('1.5510'), ('5.3248'),
            ('0.9629'), ('0.9268'), ('0.9112'), ('0.9451'), ('0.9874'),
-           ('11.2'), ('11.3'), ('8.9')
+           ('11.2'), ('11.3'), ('8.9'),
+           -- Wave 8, the stopping rule.
+           ('2.3810'), ('2.4352'), ('1.5747'), ('3.6572'), ('2.6283'), ('1.8143'),
+           ('4.8597'), ('3.5532'), ('3.2911'), ('2.0158'),
+           ('0.7872'), ('0.5590'), ('0.7307'), ('0.6789'), ('7.6623'), ('7.4580'),
+           ('1.0144'), ('1.0216'), ('1.0439'), ('1.0569'), ('1.0128'),
+           ('1.0015'), ('0.6461'), ('4.4'), ('1.4')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -176,19 +183,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 15 AND NOT contains(english.content, 'Fifteen model files')
+WHERE n = 17 AND NOT contains(english.content, 'Seventeen model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 16 AND NOT contains(english.content, 'sixteen assertion files')
+WHERE n = 17 AND NOT contains(english.content, 'seventeen assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 15 AND NOT contains(portuguese.content, 'Quinze arquivos de modelo')
+WHERE n = 17 AND NOT contains(portuguese.content, 'Dezessete arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 16 AND NOT contains(portuguese.content, 'dezesseis de asserção')
+WHERE n = 17 AND NOT contains(portuguese.content, 'dezessete de asserção')
 
 UNION ALL
 -- The repository's own code is written in English, and until wave 7 nothing checked it.

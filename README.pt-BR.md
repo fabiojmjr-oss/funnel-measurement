@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Quinze arquivos de modelo, dezesseis de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Dezessete arquivos de modelo, dezessete de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -705,6 +705,100 @@ atendimento da demanda, em vez de cobrado como etapa própria na entrada. Essa �
 deliberadamente: a triagem real é paga *antes* de a ordenação acontecer, então ela bloqueia a fila mais cedo
 do que este modelo bloqueia e custa mais, não menos.
 
+## E a sofisticação que perde para uma olhada
+
+A onda 7 gasta o mesmo esforço em toda demanda, o que nenhuma mesa faz. Uma mesa real para cedo nas óbvias
+e continua olhando as ambíguas. [`sql/c0_stopping.sql`](sql/c0_stopping.sql) constrói isso: depois de cada
+olhada a posteriori sobre as três classes é recalculada por Bayes, e a mesa se compromete assim que a maior
+posteriori cruza um limiar declarado. O limiar parametriza toda a faixa num número só — a maior fração do
+prior é 0,60, então **"não triar" não é política separada aqui, é a ponta baixa desta.**
+
+Esta onda foi construída para mostrar que a regra sequencial ganha. Ela não ganha, e a razão vale mais do
+que o resultado valeria.
+
+### O esforço de fato vai onde é necessário
+
+| Limiar | `critico` | `padrao` | `melhoria` |
+| --- | --- | --- | --- |
+| 0,70 | 2,3810 olhadas | 2,4352 | 1,5747 |
+| 0,80 | **3,6572 olhadas** | 2,6283 | **1,8143** |
+| 0,90 | 4,8597 olhadas | 3,5532 | 3,2911 |
+
+No 0,80 declarado a mesa gasta **2,0158 vezes** mais olhadas confirmando uma demanda crítica do que uma
+melhoria, e não é desleixo — é correção. O prior é 0,10 contra `critico`, então comprometer-se com ele exige
+mais evidência. Essa parte do projeto funciona exatamente como pretendido.
+
+Mas veja o que custa. `critico` já é a classe mais lenta de atender, com 1,2381 dia. Agora é também a mais
+lenta de classificar. **A classe que mais bloqueia a fila é a mais cara de reconhecer**, e as duas coisas se
+compõem.
+
+### E os rótulos saem piores onde importa
+
+| Regra no próprio ótimo (θ = 0,65) | rótulos certos | `critico` certo | custo |
+| --- | --- | --- | --- |
+| Maximizar acurácia | **0,7872** | **0,5590** | 7,6623 |
+| Minimizar custo esperado | 0,7307 | 0,6789 | **7,4580** |
+| *Uma olhada fixa (onda 7)* | *0,7000* | *0,7000* | ***7,1449*** |
+
+Três coisas, e a terceira é a onda.
+
+**A regra que maximiza acurácia reconhece a classe crítica 0,5590 das vezes** — pior que os 0,7000 que uma
+única olhada crua consegue simplesmente reportando o que viu. Bayes encolhe na direção da taxa-base; a
+taxa-base diz "provavelmente não é crítico"; e a onda 6 estabeleceu que deixar de reconhecer uma demanda
+crítica custa 6,6 vezes o que escalar uma rotineira custa. **Cada unidade de correção estatística é paga na
+moeda que a operação valoriza.**
+
+**Tornar a regra sensível a custo confirma o diagnóstico.** Comprometer-se com a classe de maior posteriori
+*vezes a urgência declarada* em vez da maior posteriori faz o custo cair de 7,6623 para 7,4580 — melhor em
+todo limiar acima do degenerado — acertando **menos rótulos**, 0,7307 contra 0,7872. *Menos rótulos certos,
+menos espera.* As duas metades disso estão asseveradas.
+
+**E as duas ainda perdem para uma olhada fixa.** Não por muito — 4,4% para a regra de custo — mas perdem.
+
+### Em toda utilização, inclusive nas com folga
+
+| Utilização antes da triagem | melhor limiar | olhadas fixas | sequencial ÷ fixo |
+| --- | --- | --- | --- |
+| 0,40 | 0,65 | 1 | 1,0144 |
+| 0,60 | 0,65 | 1 | 1,0216 |
+| 0,78 | 0,65 | 1 | 1,0439 |
+| 0,82 | 0,65 | 1 | **1,0569** |
+| 0,88 | 0,60 | 1 | 1,0128 |
+| 0,89 e acima | 0,60 | 0 | 1,0000 |
+
+Eu esperava que a regra sequencial ganhasse onde há folga, pelo raciocínio de que capacidade barata torna
+acurácia acessível. Ela nunca ganha. Em 0,40 de utilização — onde olhar custa quase nada — uma olhada crua
+ainda bate a melhor regra de parada por 1,4%, porque a desvantagem da regra não é o custo dela. É o objetivo
+dela. Usar o prior é o que a faz perder, e o prior não fica mais barato quando o servidor esvazia.
+
+> **Uma única olhada crua, escalando pelo que ela reportar, bate todo refinamento bayesiano dela — porque o
+> refinamento encolhe na direção de uma taxa-base que é contra a única classe que não se pode perder.**
+
+É por isso que bons protocolos de triagem são escritos como critérios de exclusão e não como estimativas de
+probabilidade. "Se houver qualquer indicador de gravidade, escale" é a regra da olhada crua. "Estime a
+probabilidade e atue no caso mais provável" é a regra que esta onda mostra perdendo. A primeira é pior em
+rotular e melhor em não perder, e só a segunda dessas está no placar.
+
+### Um custo real e negligenciável
+
+Como o esforço agora é resultado e não parâmetro, ele tem variância — e o trabalho residual de Pollaczek e
+Khinchine cobra o *segundo* momento do tempo de serviço, do qual o tempo de triagem faz parte. Então uma
+regra que olha um número variável de vezes custa mais que uma que olha E[K] vezes exatas. O mecanismo é
+real; o tamanho, aqui, não é: **1,0015 no pior caso**, um quinto de um por cento, porque uma olhada custa
+0,02 dia contra um atendimento de 0,6461. Importaria se olhar fosse caro em relação a fazer, e vale nomear
+para que o leitor saiba quando se preocupar.
+
+### Ondas 5 a 8
+
+| | |
+| --- | --- |
+| Onda 5 | Nenhuma ordem de prioridade reduz a espera total. Só decide quem a carrega. |
+| Onda 6 | O rótulo pelo qual a ordem ordena não é a classe, e errá-lo é transferência, não perda. |
+| Onda 7 | Acertá-lo custa a capacidade que faz o rótulo importar. Acima de 0,89 de utilização, não trie. |
+| Onda 8 | E a forma sofisticada de acertá-lo é pior que a forma crua, em toda utilização. |
+
+> **Olhe uma vez. Escale a qualquer indicação. Gaste a discussão em capacidade.**
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -755,6 +849,13 @@ do que este modelo bloqueia e custa mais, não menos.
   em documento de política nenhum.
 - **Prefira um número ímpar de verificações a um par.** Ir de três para quatro custa uma olhada inteira de
   capacidade e compra nada para a classe de baixo — 0,7840 nos dois casos.
+- **Escreva o protocolo como critério de exclusão, não como estimativa.** "Escale se houver qualquer
+  indicador de gravidade" bate "estime a probabilidade e atue no caso mais provável" aqui em toda utilização
+  de 0,40 a 0,95. Uma estimativa de probabilidade encolhe na direção da taxa-base, e a taxa-base é contra a
+  classe cuja classificação errada custa mais.
+- **Se tiver de pesar evidência, pese por custo e não por verossimilhança.** Comprometer-se com a classe de
+  maior posteriori vezes a urgência bate comprometer-se com a maior posteriori em todo limiar — acertando
+  *menos* rótulos.
 
 ## Rodando
 
@@ -785,7 +886,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham sobre os rótulos composto nas classes, as duas direções de erro varridas, as seis ordens enumeradas, e a regra que nomeia a vencedora. |
 | [`sql/b0_effort.sql`](sql/b0_effort.sql) | Acurácia derivada do esforço por um multinomial exato, conferida contra um sorteio; o que o olhar custa ao servidor; e o ótimo interior. |
 | [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | O esforço que vale gastar contra a utilização já carregada, e o ponto a partir do qual a triagem deixa de pagar. |
-| [`tests/`](tests) | Dezesseis arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/c0_stopping.sql`](sql/c0_stopping.sql) | Uma mesa sequencial: a caminhada da posteriori, os dois objetivos de rotulagem sobre a mesma caminhada, e o que a variância do esforço custa. |
+| [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | A melhor regra de parada contra uma olhada fixa, em toda utilização — a comparação que saiu ao contrário. |
+| [`tests/`](tests) | Dezessete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -810,7 +913,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Treze até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Quinze até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma
