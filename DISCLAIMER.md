@@ -34,6 +34,12 @@ delay on another class is worth, which is all the rule that minimises weighted w
 organisation's escalation policy, service target, incident severity scale or triage accuracy appears
 anywhere, and the declared 10 : 3 : 1 is conventional rather than representative.
 
+**The cost and the accuracy of looking are declared too.** The half hour a look takes, the 70% chance it
+reports the true class, and the rule that breaks a tie are parameters of this file, not measurements of any
+real triage desk. The confusion matrix of wave 7 is *derived* from them by an exact multinomial, which makes
+it arithmetic rather than evidence: it says what would follow from those numbers, and nothing about what any
+organisation's classification accuracy actually is.
+
 **The column no real operation has is the point.** `declared_rate` is the eventual conversion rate the
 generator was built from — the answer key. A real funnel has no such column, which is exactly why a real
 funnel cannot tell which of its four readings is the rate. Every finding here exists because the
@@ -85,6 +91,12 @@ para o peso de urgência, e ele deliberadamente não é dinheiro: diz quantos di
 um dia de atraso em outra classe, que é tudo de que a regra que minimiza a espera ponderada depende. Não
 aparece em lugar nenhum a política de escalação, a meta de serviço, a escala de severidade de incidente ou a
 acurácia de triagem de nenhuma organização real, e o 10 : 3 : 1 declarado é convencional, não representativo.
+
+**O custo e a acurácia de olhar também são declarados.** A meia hora que uma olhada leva, a chance de 70%
+de ela apontar a classe verdadeira e a regra que desempata são parâmetros deste arquivo, não medições de
+nenhuma mesa de triagem real. A matriz de confusão da onda 7 é *derivada* deles por um multinomial exato, o
+que a torna aritmética e não evidência: ela diz o que se seguiria daqueles números, e nada sobre qual é a
+acurácia de classificação de organização alguma.
 
 **A coluna que nenhuma operação real tem é o ponto.** `declared_rate` é a taxa de conversão eventual a
 partir da qual o gerador foi construído — o gabarito. Um funil real não tem essa coluna, e é exatamente

@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Thirteen model files, fifteen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Fifteen model files, sixteen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -593,6 +593,112 @@ class does not feel 11.6% of it. It feels **1.5632** times its ideal waiting, a 
 five times the excess the account as a whole carries. A prioritisation review spends its time arguing about
 the order. The order is the cheaper problem.
 
+## And what it costs to know: the triage desk spends the capacity it protects
+
+Wave 6 gave the desk an error rate and charged nothing for it. That is the last fiction left. Classifying
+takes looking, and the person looking is the person working — so **accuracy is bought with the only thing
+the priority order ever had to allocate.**
+
+[`sql/b0_effort.sql`](sql/b0_effort.sql) makes that explicit. Each look costs the server **0.02 days**
+(about half an hour) and reports the true class with probability **0.70**, otherwise picking uniformly
+between the other two. The label is the mode of `looks` independent looks. Nothing about the confusion
+matrix is declared any more: it falls out of an exact multinomial over the ways the votes can land, so
+accuracy is *derived* from effort. It is checked against a draw from the declared generator anyway — nine
+cells, worst deviation **2.093** standard errors.
+
+### Accuracy is not monotone in effort
+
+| Looks | `critico` | `padrao` | `melhoria` |
+| --- | --- | --- | --- |
+| 1 | 0.7000 | 0.7000 | 0.7000 |
+| **2** | **0.9100** | 0.7000 | **0.4900** |
+| 3 | 0.8785 | 0.7840 | 0.7840 |
+| **4** | 0.9163 | 0.8501 | **0.7840** |
+| 8 | 0.9712 | 0.9481 | 0.9250 |
+
+An even number of looks can tie, and a tie has to be broken by rule. The declared rule sends ties to the
+more urgent class — which is what a desk under pressure does — and the consequence is exact: **two looks
+leave `melhoria` worse than one look**, 0.4900 against 0.7000. The second look does not add information to
+that class, it adds a coin flip that the tie-break resolves against it.
+
+And the fourth look buys the bottom class **nothing at all** — 0.7840 at three looks, 0.7840 at four. A
+full look of capacity, spent, for exactly zero. **Odd effort helps every class; even effort only helps
+whichever class the tie-break favours.**
+
+That tie-break is a pure transfer, and the mirror is exact. Under the lenient rule at two looks the numbers
+are 0.4900 / 0.7000 / 0.9100 — the same three figures, reversed. The rule creates no accuracy. It moves it.
+At two looks the choice between the two rules is worth **7.6569 against 8.5145** on the declared urgency
+scale, an **11.2%** swing from a line that appears in no triage policy.
+
+### The optimum is one look, and three is worse than none
+
+| Looks | utilisation | `critico` wait | `melhoria` wait | cost | against no triage |
+| --- | --- | --- | --- | --- | --- |
+| 0 *(no triage)* | 0.7799 | 2.5868 d | 2.5868 d | 7.8212 | 1.0000 |
+| **1** | 0.8040 | 1.5789 d | 4.3030 d | **7.1449** | **0.9135** |
+| 2 | 0.8282 | 1.1868 d | 5.3872 d | 7.6569 | 0.9790 |
+| 3 *(declared)* | 0.8523 | 1.3364 d | 6.8672 d | 8.7071 | **1.1133** |
+| 5 | 0.9006 | 1.2124 d | 11.7301 d | 12.1307 | 1.5510 |
+| 8 | 0.9730 | 1.5938 d | 51.0349 d | 41.6458 | **5.3248** |
+
+One look pays 8.7%. Two looks pay 2.1%. **Three looks — the declared scenario — costs 11.3% more than not
+triaging at all**, and eight looks costs **5.3 times** more. The declared effort is deliberately past the
+optimum: a parameter tuned to the answer would have hidden the answer.
+
+Half an hour per demand, eight times over, is 0.16 days of triage. That alone takes utilisation from 0.7799
+to 0.9730 and multiplies the waiting of the same queue with no priority order from 2.5868 to **26.3007
+days** — a factor of **ten**, bought with nothing but looking.
+
+**And past a certain effort the critical class itself is worse off.** `critico` waits 1.5789 days at one
+look, bottoms out at 1.2124 at five, and is back to **1.5938 at eight** — worse than at one look. The class
+the triage exists to protect is harmed by triage, because the triage is standing in its queue.
+
+### How carefully to classify is not a property of the desk
+
+It is a property of how full the desk already is. Sweeping the utilisation *before* triage:
+
+| Utilisation before triage | looks worth spending | looks even possible | against no triage |
+| --- | --- | --- | --- |
+| 0.40 | 1 | 8 | 0.9629 |
+| 0.60 | 1 | 8 | 0.9268 |
+| **0.75** | 1 | 8 | **0.9112** |
+| 0.85 | 1 | 5 | 0.9451 |
+| 0.88 | 1 | 4 | 0.9874 |
+| **0.89** | **0** | 3 | **1.0000** |
+| 0.95 | **0** | **1** | 1.0000 |
+
+Three things in that table.
+
+**Triage stops paying at 0.89.** Past it, the effort that would buy a better label costs more waiting than
+the better label saves, and the correct policy is to sort nothing and look at nothing.
+
+**The gain peaks in the middle, at 0.75 and 8.9%.** Below it there is little waiting to reallocate, so a better label
+is worth less; above it the looking is ruinous. Triage earns its keep in a band, roughly 0.60 to 0.85, and
+is worth most where a desk is busy but not drowning.
+
+**And the ceiling collapses before the optimum does.** At 0.78 the desk could perform eight looks; at 0.85
+only five; at 0.95 **exactly one**, because a second look would push utilisation past one and the queue
+would have no steady state at all.
+
+> **The busier the desk, the less it can afford to know.** Which is the exact opposite of what happens:
+> when a queue explodes, the first response is a triage meeting.
+
+### The three waves together
+
+Wave 5 proved no priority order can reduce the total waiting — only decide who bears it. Wave 6 showed the
+label the order sorts by is not the class, and that getting it wrong is a transfer rather than a loss. Wave
+7 prices getting it right, and finds the price is charged in the same currency the order was allocating.
+
+So the arc closes on a single prescription, and it is not a scheduling prescription:
+
+> **At high utilisation there is one lever, and it is capacity.** Sorting cannot help, classifying makes it
+> worse, and classifying stops working before sorting does.
+
+The one simplification worth naming: the classification time is bundled into the demand's handling time
+rather than charged as its own stage at intake. That is the conservative choice, and deliberately so — real
+triage is paid *before* the sorting happens, so it blocks the queue earlier than this model does and costs
+more, not less.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -628,6 +734,18 @@ the order. The order is the cheaper problem.
   ratio of two numbers no escalation policy writes down.
 - **Never let a mean handling time judge a priority policy.** Across all six orders three classes can be
   served in, the reported mean wait ranks them in exactly reverse order of their true cost.
+- **Price the triage before buying it.** Classification time is served by the same server as the work, so
+  it raises the utilisation the priority order exists to manage. One look per demand pays 8.7% here; three
+  cost 11.3% *more* than not triaging at all.
+- **Check the utilisation before asking for a better label.** The effort worth spending falls as the desk
+  fills and reaches zero at 0.89, and the number of looks that are even feasible collapses first — at 0.95
+  a second look would push utilisation past one. When a queue explodes, a triage meeting is the wrong
+  reflex: at that point the only lever is capacity.
+- **Write down the tie-break.** An even number of checks produces ties, and the rule that resolves them
+  transfers accuracy between classes without creating any. Here it swings the total cost by 11.2%, and it
+  appears in no policy document.
+- **Prefer an odd number of checks to an even one.** Going from three to four costs a full look of capacity
+  and buys the bottom class exactly nothing — 0.7840 either way.
 
 ## Running it
 
@@ -656,7 +774,9 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | The queue derived on paper — Pollaczek–Khinchine, Cobham, and the conservation law the invariance is an instance of. |
 | [`sql/a0_triage.sql`](sql/a0_triage.sql) | The label the queue actually serves: a declared confusion matrix, the queue re-run on it, what each class loses and who it is paid to. |
 | [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham on the labels composed onto the classes, both error directions swept, all six orders enumerated, and the rule that names the winner. |
-| [`tests/`](tests) | Fifteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
+| [`sql/b0_effort.sql`](sql/b0_effort.sql) | Accuracy derived from effort by an exact multinomial, checked against a draw; what the looking costs the server; and the interior optimum. |
+| [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | The effort worth spending against the utilisation already carried, and the point past which triage stops paying at all. |
+| [`tests/`](tests) | Sixteen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
 ## How the claims are kept honest
@@ -680,7 +800,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Twelve so far, in
+**And defects are recorded rather than quietly fixed.** Thirteen so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

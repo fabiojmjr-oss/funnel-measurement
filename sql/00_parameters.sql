@@ -236,3 +236,41 @@ SELECT * FROM (VALUES
     ('reversed', 'true'),
     ('triaged',  'assigned')
 ) AS t(discipline, label_source);
+
+-- What triage costs, which in wave 6 was free.
+--
+-- Wave 6's confusion matrix is declared and costless: the label comes out wrong, and nothing was spent
+-- producing it. No intake desk works that way. Classifying takes looking, and looking consumes exactly the
+-- resource the priority order exists to allocate - the server's capacity. A desk that spends half an hour
+-- classifying every demand raises the utilisation it exists to manage.
+--
+-- The accuracy model is discrete on purpose. Each look reports the true class with probability
+-- `look_accuracy` and, when it errs, picks uniformly between the other two. The label is the mode of
+-- `looks` independent looks. That gives a confusion matrix which falls out of an exact multinomial, with no
+-- special function and no approximation to verify - which matters in a repository whose rule is to derive
+-- before simulating.
+--
+-- It also brings a consequence no triage policy writes down: an even number of looks produces ties, and a
+-- tie has to be broken by rule. Both rules are declared below, because the tie-break is a free lever and
+-- wave 7 measures what it transfers.
+--
+-- The classification time is bundled into the demand's handling time rather than charged as a separate
+-- stage at intake. That is the conservative simplification and the reason is worth stating: real triage is
+-- paid *before* the sorting happens, so it blocks the queue earlier than this model does and therefore
+-- costs more, not less. Charging it as its own stage needs the arrivals into each label to stay Poisson,
+-- which they do not once a classification step sits in front of them - see "Still open" in docs/ROADMAP.md.
+CREATE OR REPLACE TABLE queue_effort AS
+SELECT * FROM (VALUES
+    ('look_days',      0.02, 'Server time each look consumes, in days. About half an hour.'),
+    ('look_accuracy',  0.70, 'Probability that one look on its own reports the true class.'),
+    ('declared_looks', 3.00, 'Triage effort of the base scenario. Deliberately past the optimum: a declared parameter tuned to the answer would hide the answer.'),
+    ('max_looks',      8.00, 'Largest effort swept. Beyond it the utilisation passes one and the queue has no steady state.')
+) AS t(key, value, note);
+
+-- The two tie-break rules. `urgent` sends a tie to the more urgent class, which is what a desk under
+-- pressure does; `lenient` sends it to the less urgent one.
+CREATE OR REPLACE TABLE queue_tie_breaks AS
+SELECT * FROM (VALUES
+    ('urgent',  'A tie goes to the lower rank, that is, to the more urgent class.'),
+    ('lenient', 'A tie goes to the higher rank, that is, to the less urgent class.')
+) AS t(tie_break, note);

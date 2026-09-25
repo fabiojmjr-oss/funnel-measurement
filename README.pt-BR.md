@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Treze arquivos de modelo, quinze de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Quinze arquivos de modelo, dezesseis de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -599,6 +599,112 @@ sente 11,6% disso. Ela sente **1,5632** vezes sua espera ideal, um excesso de **
 o excesso que a conta inteira carrega. Uma revisão de priorização gasta seu tempo discutindo a ordem. A ordem
 é o problema mais barato.
 
+## E o que custa saber: a mesa de triagem gasta a capacidade que ela protege
+
+A onda 6 deu à mesa uma taxa de erro e não cobrou nada por ela. Essa é a última ficção que restava.
+Classificar exige olhar, e quem olha é quem trabalha — então **a acurácia é comprada com a única coisa que
+a ordem de prioridade tinha para alocar.**
+
+[`sql/b0_effort.sql`](sql/b0_effort.sql) torna isso explícito. Cada olhada custa ao servidor **0,02 dia**
+(cerca de meia hora) e aponta a classe verdadeira com probabilidade **0,70**, escolhendo uniformemente uma
+das outras duas quando erra. O rótulo é a moda de `looks` olhadas independentes. Nada na matriz de confusão
+é declarado agora: ela sai de um multinomial exato sobre as formas de os votos caírem, de modo que a
+acurácia é *derivada* do esforço. Mesmo assim é conferida contra um sorteio do gerador declarado — nove
+células, pior desvio de **2,093** erros padrão.
+
+### A acurácia não é monótona no esforço
+
+| Olhadas | `critico` | `padrao` | `melhoria` |
+| --- | --- | --- | --- |
+| 1 | 0,7000 | 0,7000 | 0,7000 |
+| **2** | **0,9100** | 0,7000 | **0,4900** |
+| 3 | 0,8785 | 0,7840 | 0,7840 |
+| **4** | 0,9163 | 0,8501 | **0,7840** |
+| 8 | 0,9712 | 0,9481 | 0,9250 |
+
+Um número par de olhadas pode empatar, e um empate tem de ser desempatado por regra. A regra declarada
+manda o empate para a classe mais urgente — que é o que uma mesa sob pressão faz — e a consequência é
+exata: **duas olhadas deixam `melhoria` pior que uma olhada**, 0,4900 contra 0,7000. A segunda olhada não
+acrescenta informação àquela classe, acrescenta uma moeda que o desempate resolve contra ela.
+
+E a quarta olhada compra **nada** para a classe de baixo — 0,7840 com três olhadas, 0,7840 com quatro. Uma
+olhada inteira de capacidade, gasta, por exatamente zero. **Esforço ímpar ajuda toda classe; esforço par só
+ajuda a classe que o desempate favorece.**
+
+Esse desempate é uma transferência pura, e o espelho é exato. Sob a regra tolerante, com duas olhadas, os
+números são 0,4900 / 0,7000 / 0,9100 — as mesmas três cifras, invertidas. A regra não cria acurácia. Ela a
+move. Com duas olhadas, a escolha entre as duas regras vale **7,6569 contra 8,5145** na escala de urgência
+declarada, uma oscilação de **11,2%** vinda de uma linha que não aparece em nenhuma política de triagem.
+
+### O ótimo é uma olhada, e três é pior que nenhuma
+
+| Olhadas | utilização | espera `critico` | espera `melhoria` | custo | contra não triar |
+| --- | --- | --- | --- | --- | --- |
+| 0 *(sem triagem)* | 0,7799 | 2,5868 d | 2,5868 d | 7,8212 | 1,0000 |
+| **1** | 0,8040 | 1,5789 d | 4,3030 d | **7,1449** | **0,9135** |
+| 2 | 0,8282 | 1,1868 d | 5,3872 d | 7,6569 | 0,9790 |
+| 3 *(declarado)* | 0,8523 | 1,3364 d | 6,8672 d | 8,7071 | **1,1133** |
+| 5 | 0,9006 | 1,2124 d | 11,7301 d | 12,1307 | 1,5510 |
+| 8 | 0,9730 | 1,5938 d | 51,0349 d | 41,6458 | **5,3248** |
+
+Uma olhada paga 8,7%. Duas olhadas pagam 2,1%. **Três olhadas — o cenário declarado — custam 11,3% mais que
+não triar**, e oito olhadas custam **5,3 vezes** mais. O esforço declarado está deliberadamente passando do
+ótimo: um parâmetro calibrado na resposta teria escondido a resposta.
+
+Meia hora por demanda, oito vezes, é 0,16 dia de triagem. Isso sozinho leva a utilização de 0,7799 para
+0,9730 e multiplica a espera da mesma fila sem ordem de prioridade nenhuma de 2,5868 para **26,3007 dias**
+— um fator de **dez**, comprado só com olhar.
+
+**E passando de certo esforço a própria classe crítica fica pior.** `critico` espera 1,5789 dia com uma
+olhada, chega ao mínimo de 1,2124 com cinco, e volta a **1,5938 com oito** — pior que com uma olhada. A
+classe que a triagem existe para proteger é prejudicada pela triagem, porque a triagem está na fila dela.
+
+### Com que cuidado classificar não é propriedade da mesa
+
+É propriedade de quão cheia a mesa já está. Varrendo a utilização *antes* da triagem:
+
+| Utilização antes da triagem | olhadas que valem | olhadas possíveis | contra não triar |
+| --- | --- | --- | --- |
+| 0,40 | 1 | 8 | 0,9629 |
+| 0,60 | 1 | 8 | 0,9268 |
+| **0,75** | 1 | 8 | **0,9112** |
+| 0,85 | 1 | 5 | 0,9451 |
+| 0,88 | 1 | 4 | 0,9874 |
+| **0,89** | **0** | 3 | **1,0000** |
+| 0,95 | **0** | **1** | 1,0000 |
+
+Três coisas nessa tabela.
+
+**A triagem deixa de pagar em 0,89.** Passando disso, o esforço que compraria um rótulo melhor custa mais
+espera do que o rótulo melhor economiza, e a política correta é não ordenar nada e não olhar nada.
+
+**O ganho tem pico no meio, em 0,75 e 8,9%.** Abaixo dele há pouca espera para realocar, então um rótulo melhor
+vale menos; acima dele o olhar é ruinoso. A triagem se paga numa faixa, de mais ou menos 0,60 a 0,85, e vale
+mais onde a mesa está ocupada mas não afogada.
+
+**E o teto colapsa antes do ótimo.** Em 0,78 a mesa conseguiria fazer oito olhadas; em 0,85 só cinco; em
+0,95 **exatamente uma**, porque a segunda empurraria a utilização acima de um e a fila não teria regime
+estacionário nenhum.
+
+> **Quanto mais ocupada a mesa, menos ela pode se permitir saber.** Que é exatamente o contrário do que
+> acontece: quando uma fila explode, a primeira reação é uma reunião de triagem.
+
+### As três ondas juntas
+
+A onda 5 provou que nenhuma ordem de prioridade reduz a espera total — só decide quem a carrega. A onda 6
+mostrou que o rótulo pelo qual a ordem ordena não é a classe, e que errá-lo é transferência, não perda. A
+onda 7 põe preço em acertá-lo, e descobre que o preço é cobrado na mesma moeda que a ordem estava alocando.
+
+Então o arco fecha numa prescrição só, e ela não é de sequenciamento:
+
+> **Em utilização alta existe uma alavanca, e ela é capacidade.** Ordenar não ajuda, classificar piora, e
+> classificar para de funcionar antes de ordenar.
+
+A única simplificação que merece ser nomeada: o tempo de classificação está embutido no tempo de
+atendimento da demanda, em vez de cobrado como etapa própria na entrada. Essa é a escolha conservadora, e
+deliberadamente: a triagem real é paga *antes* de a ordenação acontecer, então ela bloqueia a fila mais cedo
+do que este modelo bloqueia e custa mais, não menos.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -637,6 +743,18 @@ o excesso que a conta inteira carrega. Uma revisão de priorização gasta seu t
   a razão entre dois números que nenhuma política de escalação escreve.
 - **Nunca deixe um tempo médio de tratamento julgar uma política de prioridade.** Nas seis ordens em que três
   classes podem ser servidas, a espera média reportada as ordena exatamente ao inverso do custo verdadeiro.
+- **Precifique a triagem antes de comprá-la.** O tempo de classificação é servido pelo mesmo servidor que o
+  trabalho, então eleva a utilização que a ordem de prioridade existe para administrar. Uma olhada por
+  demanda paga 8,7% aqui; três custam 11,3% *mais* que não triar.
+- **Confira a utilização antes de pedir um rótulo melhor.** O esforço que vale gastar cai à medida que a
+  mesa enche e chega a zero em 0,89, e o número de olhadas sequer viáveis colapsa antes — em 0,95 uma
+  segunda olhada empurraria a utilização acima de um. Quando uma fila explode, reunião de triagem é o
+  reflexo errado: nesse ponto a única alavanca é capacidade.
+- **Escreva a regra de desempate.** Um número par de verificações produz empates, e a regra que os resolve
+  transfere acurácia entre classes sem criar nenhuma. Aqui ela oscila o custo total em 11,2%, e não aparece
+  em documento de política nenhum.
+- **Prefira um número ímpar de verificações a um par.** Ir de três para quatro custa uma olhada inteira de
+  capacidade e compra nada para a classe de baixo — 0,7840 nos dois casos.
 
 ## Rodando
 
@@ -665,7 +783,9 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/95_queue_closed_form.sql`](sql/95_queue_closed_form.sql) | A fila derivada no papel — Pollaczek–Khinchine, Cobham, e a lei de conservação de que a invariância é um caso. |
 | [`sql/a0_triage.sql`](sql/a0_triage.sql) | O rótulo que a fila de fato serve: uma matriz de confusão declarada, a fila refeita sobre ela, o que cada classe perde e a quem isso é pago. |
 | [`sql/a5_urgency.sql`](sql/a5_urgency.sql) | Cobham sobre os rótulos composto nas classes, as duas direções de erro varridas, as seis ordens enumeradas, e a regra que nomeia a vencedora. |
-| [`tests/`](tests) | Quinze arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
+| [`sql/b0_effort.sql`](sql/b0_effort.sql) | Acurácia derivada do esforço por um multinomial exato, conferida contra um sorteio; o que o olhar custa ao servidor; e o ótimo interior. |
+| [`sql/b5_effort_sweep.sql`](sql/b5_effort_sweep.sql) | O esforço que vale gastar contra a utilização já carregada, e o ponto a partir do qual a triagem deixa de pagar. |
+| [`tests/`](tests) | Dezesseis arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
 ## Como as afirmações são mantidas honestas
@@ -690,7 +810,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Doze até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Treze até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

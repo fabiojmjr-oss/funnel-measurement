@@ -206,6 +206,71 @@ WITH expected(what, detail, value) AS (
     ('lever cost',             'worst order',               2.2321),
     ('lever cost',             'critical class',            1.5632),
 
+    -- Wave 7, what triage costs. Accuracy derived from effort.
+    ('effort accuracy', 'urgent 1 p1',   0.7000),
+    ('effort accuracy', 'urgent 2 p1',   0.9100),
+    ('effort accuracy', 'urgent 2 p3',   0.4900),
+    ('effort accuracy', 'urgent 3 p1',   0.8785),
+    ('effort accuracy', 'urgent 3 p3',   0.7840),
+    ('effort accuracy', 'urgent 4 p2',   0.8501),
+    ('effort accuracy', 'urgent 4 p3',   0.7840),
+    ('effort accuracy', 'urgent 8 p1',   0.9712),
+    ('effort accuracy', 'urgent 8 p2',   0.9481),
+    ('effort accuracy', 'urgent 8 p3',   0.9250),
+    ('effort accuracy', 'lenient 2 p1',  0.4900),
+    ('effort accuracy', 'lenient 2 p3',  0.9100),
+    ('effort worst deviation', 'standard errors', 2.093),
+
+    -- What the looking costs the server.
+    ('effort utilisation', '0',          0.7799),
+    ('effort utilisation', '1',          0.8040),
+    ('effort utilisation', '2',          0.8282),
+    ('effort utilisation', '3',          0.8523),
+    ('effort utilisation', '5',          0.9006),
+    ('effort utilisation', '8',          0.9730),
+    ('effort wait without priority', '8', 26.3007),
+    ('effort triage days', '8',          0.16),
+
+    -- The trade, and the interior optimum.
+    ('effort critical wait', '1',        1.5789),
+    ('effort critical wait', '2',        1.1868),
+    ('effort critical wait', '3',        1.3364),
+    ('effort critical wait', '5',        1.2124),
+    ('effort critical wait', '8',        1.5938),
+    ('effort improvement wait', '1',     4.3030),
+    ('effort improvement wait', '2',     5.3872),
+    ('effort improvement wait', '3',     6.8672),
+    ('effort improvement wait', '5',    11.7301),
+    ('effort improvement wait', '8',    51.0349),
+    ('effort cost', 'urgent 0',          7.8212),
+    ('effort cost', 'urgent 1',          7.1449),
+    ('effort cost', 'urgent 2',          7.6569),
+    ('effort cost', 'urgent 3',          8.7071),
+    ('effort cost', 'urgent 5',         12.1307),
+    ('effort cost', 'urgent 8',         41.6458),
+    ('effort cost', 'lenient 2',         8.5145),
+    ('effort against no triage', 'urgent 1', 0.9135),
+    ('effort against no triage', 'urgent 2', 0.9790),
+    ('effort against no triage', 'urgent 3', 1.1133),
+    ('effort against no triage', 'urgent 5', 1.5510),
+    ('effort against no triage', 'urgent 8', 5.3248),
+
+    -- And the effort worth spending, against the utilisation already carried.
+    ('effort best looks', '0.40',        1.0),
+    ('effort best looks', '0.75',        1.0),
+    ('effort best looks', '0.88',        1.0),
+    ('effort best looks', '0.89',        0.0),
+    ('effort best looks', '0.95',        0.0),
+    ('effort optimum gain', '0.40',      0.9629),
+    ('effort optimum gain', '0.60',      0.9268),
+    ('effort optimum gain', '0.75',      0.9112),
+    ('effort optimum gain', '0.85',      0.9451),
+    ('effort optimum gain', '0.88',      0.9874),
+    ('effort feasible looks', '0.78',    8.0),
+    ('effort feasible looks', '0.85',    5.0),
+    ('effort feasible looks', '0.88',    4.0),
+    ('effort feasible looks', '0.95',    1.0),
+
     -- The sales funnel shown stage by stage.
     ('window_rate',   'venda qualificado',        0.4267),
     ('cohort_rate',   'venda qualificado',        0.4464),
@@ -640,6 +705,42 @@ measured(what, detail, value) AS (
     UNION ALL SELECT 'lever cost', 'worst order', round(cost_of_the_worst_order, 4) FROM triage_cost
     UNION ALL SELECT 'lever cost', 'critical class',
         round(cost_of_imperfect_triage_to_the_critical_class, 4) FROM triage_cost
+
+    UNION ALL SELECT 'effort accuracy', tie_break || ' ' || looks || ' ' || true_priority,
+        round(probability, 4) FROM effort_confusion WHERE true_priority = assigned_priority
+    UNION ALL SELECT 'effort worst deviation', 'standard errors', round(worst, 3) FROM (
+        SELECT max(abs(d.drawn_probability - c.probability)
+                   / sqrt(c.probability * (1.0 - c.probability) / n.from_class)) AS worst
+        FROM effort_confusion_draw d
+        JOIN effort_confusion c
+          ON c.looks = (SELECT value FROM queue_effort WHERE key = 'declared_looks')::INTEGER
+         AND c.tie_break = d.tie_break AND c.true_priority = d.true_priority
+         AND c.assigned_priority = d.assigned_priority
+        JOIN (SELECT tie_break, true_priority, sum(demands) AS from_class
+              FROM effort_confusion_draw GROUP BY 1, 2) n
+          ON n.tie_break = d.tie_break AND n.true_priority = d.true_priority
+    )
+
+    UNION ALL SELECT 'effort utilisation', looks::VARCHAR, round(utilisation, 4) FROM effort_capacity
+    UNION ALL SELECT 'effort wait without priority', looks::VARCHAR, round(wait_without_priority, 4)
+        FROM effort_capacity
+    UNION ALL SELECT 'effort triage days', looks::VARCHAR, round(triage_days_per_demand, 4)
+        FROM effort_capacity
+
+    UNION ALL SELECT 'effort critical wait', looks::VARCHAR, round(critical_wait, 4)
+        FROM effort_cost WHERE tie_break = 'urgent'
+    UNION ALL SELECT 'effort improvement wait', looks::VARCHAR, round(improvement_wait, 4)
+        FROM effort_cost WHERE tie_break = 'urgent'
+    UNION ALL SELECT 'effort cost', tie_break || ' ' || looks, round(weighted_waiting, 4) FROM effort_cost
+    UNION ALL SELECT 'effort against no triage', tie_break || ' ' || looks, round(against_no_triage, 4)
+        FROM effort_cost
+
+    UNION ALL SELECT 'effort best looks', base_utilisation::VARCHAR, best_looks::DOUBLE
+        FROM effort_optimum WHERE tie_break = 'urgent'
+    UNION ALL SELECT 'effort optimum gain', base_utilisation::VARCHAR, round(against_no_triage, 4)
+        FROM effort_optimum WHERE tie_break = 'urgent'
+    UNION ALL SELECT 'effort feasible looks', base_utilisation::VARCHAR, most_looks_feasible::DOUBLE
+        FROM effort_optimum WHERE tie_break = 'urgent'
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

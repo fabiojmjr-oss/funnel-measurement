@@ -389,6 +389,77 @@ reviews are about the order. The order is the smaller number.
     5537, and they are pinned like every other figure. **Prose that does arithmetic is prose that is not
     under test.**
 
+## Wave 7 — what it costs to know *(complete)*
+
+Wave 6 gave the triage desk an error rate and charged nothing for it, which was the last fiction left.
+`sql/b0_effort.sql` charges: each look costs the server 0.02 days and reports the true class with
+probability 0.70, the label is the mode of `looks` independent looks, and the server doing the looking is
+the server doing the work. So accuracy is bought with the only thing the priority order ever had to
+allocate, and the confusion matrix stops being declared — it is derived from effort by an exact multinomial
+over the ways the votes can land, checked against a draw from the declared generator to a worst deviation of
+2.093 standard errors.
+
+**Result 1 — accuracy is not monotone in effort, and the reason is the tie-break.** An even number of looks
+can tie. The declared rule sends ties to the more urgent class, which is what a desk under pressure does,
+and the consequence is exact: two looks leave `melhoria` at 0.4900 against 0.7000 from one look. The second
+look adds no information to that class, it adds a coin flip the tie-break resolves against it. The fourth
+look buys the bottom class nothing at all — 0.7840 at three looks and 0.7840 at four, a full look of
+capacity spent for exactly zero. **Odd effort helps every class; even effort only helps whichever class the
+tie-break favours.**
+
+**Result 2 — the tie-break is a pure transfer, and the mirror is exact.** Under the lenient rule at two
+looks the three accuracies are 0.4900 / 0.7000 / 0.9100 — the same figures reversed. The rule creates no
+accuracy, it moves it, and at two looks the choice between the rules is worth 7.6569 against 8.5145 on the
+declared urgency scale: an 11.2% swing from a line that appears in no triage policy.
+
+**Result 3 — the optimum is one look, and the declared three is worse than none.** One look costs 7.1449
+against 7.8212 for no triage at all, a saving of 8.7%. Two looks save 2.1%. Three cost 11.3% *more* than
+not triaging, and eight cost 5.3 times more. The declared effort sits past the optimum on purpose: a
+parameter tuned to the answer would have hidden the answer. And the effort alone is ruinous before any
+sorting enters — 0.16 days of triage per demand takes utilisation from 0.7799 to 0.9730 and multiplies the
+same queue's waiting from 2.5868 to 26.3007 days, a factor of ten bought with nothing but looking.
+
+**Result 4 — past a certain effort the critical class itself is harmed.** `critico` waits 1.5789 days at one
+look, bottoms out at 1.2124 at five, and returns to 1.5938 at eight — worse than at one look. The class the
+triage exists to protect is hurt by the triage, because the triage is standing in its queue.
+
+**Result 5 — how carefully to classify is not a property of the desk.** Sweeping the utilisation carried
+before any triage, the effort worth spending is one look from 0.40 to 0.88 and **zero from 0.89 up**: past
+that point the effort that would buy a better label costs more waiting than the better label saves. The gain
+peaks in the middle, at 0.75 and 8.9%, because below it there is little waiting to reallocate and above it
+the looking is ruinous — triage earns its keep in a band, roughly 0.60 to 0.85. And the feasible ceiling
+collapses before the optimum does: eight looks are possible at 0.78, five at 0.85, and exactly one at 0.95,
+where a second would push utilisation past one and leave the queue with no steady state. **The busier the
+desk, the less it can afford to know**, which is the opposite of what happens — when a queue explodes the
+first response is a triage meeting.
+
+**And the three waves close on one prescription.** Wave 5: no order reduces the total waiting, it only
+decides who bears it. Wave 6: the label the order sorts by is not the class, and getting it wrong is a
+transfer. Wave 7: getting it right is paid in the same currency the order was allocating. So at high
+utilisation there is one lever and it is capacity — sorting cannot help, classifying makes it worse, and
+classifying stops working first.
+
+One simplification is named rather than hidden. The classification time is bundled into the demand's
+handling time instead of being charged as its own stage at intake. That is conservative on purpose: real
+triage is paid *before* the sorting happens, so it blocks the queue earlier than this model does and costs
+more, not less. Charging it properly needs the arrivals into each label to stay Poisson, and they do not
+once a classification step sits in front of them — see "Still open".
+
+### Defects found and recorded
+
+13. **The repository tests its documents' language contract and not its own code's.** `assert_documents.sql`
+    has checked since wave 1 that every published figure appears in both READMEs in each language's own
+    spelling. It checked nothing about the language of the models and assertions — and wave 7's parameter
+    block was written in Portuguese and passed the entire suite. Every convention this repository states
+    about itself was being enforced except the one it states first: code and comments in English, data in
+    whatever language the invented company speaks. Fixed by an assertion over comment lines only, since the
+    declared data is deliberately Portuguese, with a word list restricted to function words that cannot
+    occur inside an English comment — `com` is excluded for a reason worth recording, because it matches
+    inside `github.com`. This is the fourth time a convention in this repository turned out to be enforced
+    on everything except itself, after the harness that never ran the file, the assertion that read a stored
+    ratio, and the generator assertion that tested streams nobody draws from. **A rule that is stated and
+    not compiled is a rule that is already broken somewhere.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
@@ -454,10 +525,14 @@ reviews are about the order. The order is the smaller number.
   sometimes is, once the thing has been worked — so the honest object is a delayed, partially observed label
   and a correction built on it. Whether the later revelation is representative of the demands whose class is
   never revealed is the same question wave 4 asked about censoring, and it has the same uncomfortable answer.
-- **A triage decision that can spend time to be more accurate.** Here the matrix is free. Real triage trades
-  accuracy against the time it takes, and that time is itself work in the queue: a desk that spends ten
-  minutes classifying every demand raises the utilisation it is trying to protect. The optimum is interior
-  and nothing here computes it.
+- **Classification charged as its own stage rather than bundled into the handling.** Wave 7 adds the triage
+  time to each demand's service, which is conservative but not what happens: the looking is done at intake,
+  before the label exists, so it blocks the queue earlier and costs more. Charging it properly makes the
+  arrivals into each label non-Poisson, which is exactly the assumption Cobham's formula needs, so it wants
+  either a simulation as the answer key or a derivation this file does not have.
+- **A desk that chooses its effort per demand.** Wave 7's effort is a constant: every demand gets the same
+  number of looks. A real desk looks harder at the ones that look ambiguous, which is a sequential decision
+  with a stopping rule, and the stopping rule is where most of the available gain probably is.
 - **Escalation as a repeated decision.** A demand's label is set once and never revisited. Real operations
   re-triage: things get escalated after they have waited, which couples the label to the queue state and
   makes the whole system a feedback loop rather than a sorting.

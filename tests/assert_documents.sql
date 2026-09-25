@@ -29,7 +29,8 @@ words(n, english, portuguese) AS (
            (5, 'Five so far', 'Cinco até aqui'), (6, 'Six so far', 'Seis até aqui'),
            (7, 'Seven so far', 'Sete até aqui'), (8, 'Eight so far', 'Oito até aqui'),
            (9, 'Nine so far', 'Nove até aqui'), (10, 'Ten so far', 'Dez até aqui'),
-           (11, 'Eleven so far', 'Onze até aqui'), (12, 'Twelve so far', 'Doze até aqui')
+           (11, 'Eleven so far', 'Onze até aqui'), (12, 'Twelve so far', 'Doze até aqui'),
+           (13, 'Thirteen so far', 'Treze até aqui')
 ),
 figures(figure) AS (
     VALUES ('1.9826'), ('1.6988'), ('0.9522'), ('0.9907'), ('0.9218'), ('0.9524'),
@@ -82,7 +83,19 @@ figures(figure) AS (
            ('1.2381'), ('8.0768'), ('4.0797'), ('0.7353'), ('0.5024'), ('1.9904'),
            ('1.9797'), ('2.0497'),
            ('2.4512'), ('0.8046'), ('0.9303'), ('0.9982'), ('1.0016'), ('1.0544'),
-           ('1.1157'), ('1.5632'), ('11.6'), ('56.3')
+           ('1.1157'), ('1.5632'), ('11.6'), ('56.3'),
+           -- Wave 7, what triage costs.
+           ('2.093'),
+           ('0.7000'), ('0.9100'), ('0.4900'), ('0.8785'), ('0.7840'), ('0.9163'), ('0.8501'),
+           ('0.9712'), ('0.9481'), ('0.9250'),
+           ('0.7799'), ('0.8040'), ('0.8282'), ('0.8523'), ('0.9006'), ('0.9730'), ('26.3007'),
+           ('0.16'),
+           ('1.5789'), ('4.3030'), ('7.1449'), ('1.1868'), ('5.3872'), ('7.6569'), ('1.3364'),
+           ('6.8672'), ('8.7071'), ('1.2124'), ('11.7301'), ('12.1307'), ('1.5938'), ('51.0349'),
+           ('41.6458'), ('8.5145'),
+           ('0.9135'), ('0.9790'), ('1.1133'), ('1.5510'), ('5.3248'),
+           ('0.9629'), ('0.9268'), ('0.9112'), ('0.9451'), ('0.9874'),
+           ('11.2'), ('11.3'), ('8.9')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -163,19 +176,41 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 13 AND NOT contains(english.content, 'Thirteen model files')
+WHERE n = 15 AND NOT contains(english.content, 'Fifteen model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 15 AND NOT contains(english.content, 'fifteen assertion files')
+WHERE n = 16 AND NOT contains(english.content, 'sixteen assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 13 AND NOT contains(portuguese.content, 'Treze arquivos de modelo')
+WHERE n = 15 AND NOT contains(portuguese.content, 'Quinze arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 15 AND NOT contains(portuguese.content, 'quinze de asserção')
+WHERE n = 16 AND NOT contains(portuguese.content, 'dezesseis de asserção')
+
+UNION ALL
+-- The repository's own code is written in English, and until wave 7 nothing checked it.
+--
+-- This file asserts that the two READMEs stay in step in both languages, and asserted nothing about the
+-- language of the models and assertions themselves - so a parameters block written in Portuguese passed
+-- every check in the suite. Defect 13. Only comment lines are examined, because the declared data is
+-- deliberately Portuguese: the funnels, the stages and the class labels are invented Portuguese words, and
+-- DISCLAIMER.md says so. The word list is restricted to function words that cannot occur inside an English
+-- comment.
+SELECT 'a comment in the repository''s own code is not in English', file || ': ' || trim(line) AS detail
+FROM (
+    SELECT filename AS file, unnest(string_split(content, chr(10))) AS line
+    FROM read_text('sql/*.sql')
+    UNION ALL
+    SELECT filename, unnest(string_split(content, chr(10)))
+    FROM read_text('tests/*.sql')
+), (VALUES ('que'), ('não'), ('uma'), ('são'), ('para'), ('pelo'), ('pela'), ('isso'), ('cada'),
+           ('dos'), ('das'), ('então'), ('também'), ('porque'), ('quando'), ('onde'), ('sobre'),
+           ('mesmo'), ('apenas'), ('deve'), ('está'), ('pode'), ('foi')) AS w(word)
+WHERE regexp_matches(line, '^\s*--')
+  AND regexp_matches(lower(line), '\b' || w.word || '\b')
 
 UNION ALL
 SELECT 'a placeholder token survived in ' || name, token
