@@ -9,7 +9,8 @@ SELECT * FROM (VALUES
     ('as_of_day',      180, 'Last day of the observation window. Anything later has not happened yet.'),
     ('window_days',     30, 'Length of the reporting window a dashboard shows.'),
     ('maturity_days',   30, 'Days a cohort is given to convert before it is read. The same length as the window on purpose, so the two funnels are answering the same question.'),
-    ('rng_rounds',       4, 'Mixing rounds in the declared generator. Written down because a generator nobody can read is a figure nobody can reproduce.')
+    ('rng_rounds',       4, 'Mixing rounds in the declared generator. Written down because a generator nobody can read is a figure nobody can reproduce.'),
+    ('intervention_day', 90, 'The day each funnel changed. Subjects arriving on or after it meet the changed stage; subjects before it do not.')
 ) AS t(key, value, note);
 
 -- The six funnels a mature company runs. One row each, and the growth rate is the parameter that
@@ -351,3 +352,29 @@ SELECT * FROM (VALUES
     (1, 1,    7,  101), (1, 2, 2221, 2251),
     (2, 1, 2311, 2347), (2, 2, 3371, 3373)
 ) AS t(entry, attempt, pass_salt, lag_salt);
+
+-- Wave 10: the change somebody shipped, and what it actually did.
+--
+-- One intervention per funnel, all on the same day, so the six differ only in what they changed. A rate
+-- multiplier moves the chance of clearing one stage; a lag multiplier moves how long clearing it takes and
+-- nothing else. The point of separating them is that a dashboard cannot: the reading it takes moves for
+-- either reason, and two of these six change the delay while leaving the eventual rate exactly alone.
+--
+-- atendimento gets a multiplier of one on both, which makes it a placebo - a change that was announced,
+-- shipped, and does nothing. It is here to say what a measured lift of zero looks like on this account,
+-- because a reading that never sees a null result is not measuring anything.
+CREATE OR REPLACE TABLE interventions AS
+SELECT * FROM (VALUES
+    ('venda',       5, 1.25, 1.00, 'rate',    'A better closing script at the last stage.'),
+    ('ativacao',    4, 1.00, 0.50, 'speed',   'Onboarding contacted twice as fast, with no change to who activates.'),
+    ('retencao',    2, 1.30, 1.00, 'rate',    'A churn model that flags more of the accounts that are really at risk.'),
+    ('resgate',     2, 1.00, 0.40, 'speed',   'Eligibility decided in days instead of weeks.'),
+    ('atendimento', 3, 1.00, 1.00, 'placebo', 'A change that was shipped and does nothing.'),
+    ('demanda',     4, 1.10, 0.60, 'both',    'More demands cleared for execution, and cleared sooner.')
+) AS t(funnel, target_step, rate_multiplier, lag_multiplier, kind, note);
+
+-- The horizons the lift is read at. The declared reporting maturity is 30 days, and the rest are here
+-- because the whole finding of wave 10 is that one horizon cannot tell a rate change from a speed change
+-- and the curve across horizons can.
+CREATE OR REPLACE TABLE lift_horizons AS
+SELECT * FROM (VALUES (5), (10), (20), (30), (45), (60)) AS t(maturity);

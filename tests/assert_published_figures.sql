@@ -457,6 +457,39 @@ WITH expected(what, detail, value) AS (
     ('movement events per subject', 'venda 4',               1.2256),
     ('movement touch gap',      'venda 4',                   2.7503),
     ('movement visited twice',  'venda 4',                   0.2049),
+
+    -- Wave 10: the change somebody shipped.
+    ('lift control rows',       'untreated',             46734.0),
+    ('lift control rows',       'counterfactual',        98124.0),
+    ('lift causal',             'venda',                     0.2512),
+    ('lift causal',             'retencao',                  0.3207),
+    ('lift causal',             'demanda',                   0.1041),
+    ('lift causal',             'ativacao',                  0.0),
+    ('lift causal',             'resgate',                   0.0),
+    ('lift causal',             'atendimento',               0.0),
+    ('lift gained',             'venda',                   107.0),
+    ('lift gained',             'retencao',                 76.0),
+    ('lift gained',             'demanda',                 447.0),
+
+    ('lift measured', 'ativacao 10',                         0.6374),
+    ('lift measured', 'ativacao 20',                         0.4022),
+    ('lift measured', 'ativacao 30',                         0.1593),
+    ('lift measured', 'ativacao 60',                         0.0047),
+    ('lift measured', 'resgate 20',                          0.5385),
+    ('lift measured', 'resgate 30',                          0.2174),
+    ('lift measured', 'venda 20',                            0.2245),
+    ('lift measured', 'venda 30',                            0.2513),
+    ('lift measured', 'retencao 20',                         0.1892),
+    ('lift measured', 'retencao 30',                         0.2391),
+    ('lift measured', 'demanda 20',                          0.3399),
+    ('lift measured', 'demanda 30',                          0.2328),
+
+    ('lift window',             'venda',                     0.0218),
+    ('lift window',             'retencao',                  0.0132),
+    ('lift window',             'ativacao',                  0.3962),
+    ('lift window',             'resgate',                   0.0294),
+    ('lift window',             'demanda',                   0.1581),
+    ('lift window',             'atendimento',              -0.0139),
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -856,6 +889,15 @@ measured(what, detail, value) AS (
     UNION ALL SELECT 'movement touch gap', funnel || ' ' || step, round(gap_days, 4) FROM movement_timing
     UNION ALL SELECT 'movement visited twice', funnel || ' ' || step, round(share_visited_twice, 4)
         FROM movement_timing
+    UNION ALL SELECT 'lift control rows', 'untreated', count(*)::DOUBLE FROM intervention_events
+        WHERE world = 'actual' AND NOT treated
+    UNION ALL SELECT 'lift control rows', 'counterfactual', count(*)::DOUBLE FROM intervention_events
+        WHERE world = 'counterfactual'
+    UNION ALL SELECT 'lift causal', funnel, round(causal_lift, 4) FROM lift_eventual
+    UNION ALL SELECT 'lift gained', funnel, subjects_gained::DOUBLE FROM lift_eventual
+    UNION ALL SELECT 'lift measured', funnel || ' ' || maturity, round(measured_lift, 4)
+        FROM lift_by_maturity
+    UNION ALL SELECT 'lift window', funnel, round(window_lift, 4) FROM lift_windows
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

@@ -46,6 +46,13 @@ start again — are parameters of `sql/00_parameters.sql`, chosen to make each f
 No real customer journey, service recovery process, churn-win-back programme or case reopening was measured
 to produce them, and the 45-day return delay is a round number rather than a finding.
 
+**The six interventions of wave 10 are invented, and so is the fact that they worked.** The day they were
+shipped, which stage each one touched, the multiplier on the rate, the multiplier on the delay and the placebo
+that does nothing are all parameters of `sql/00_parameters.sql`. No real launch, experiment, process
+improvement, system rollout or Kaizen result is described anywhere, and none of these figures says what any
+intervention of any kind would achieve in any organisation. What the wave measures is not whether these
+changes work; it is what a reading of them reports, given that the generator already knows the answer.
+
 **The column no real operation has is the point.** `declared_rate` is the eventual conversion rate the
 generator was built from — the answer key. A real funnel has no such column, which is exactly why a real
 funnel cannot tell which of its four readings is the rate. Every finding here exists because the
@@ -110,6 +117,13 @@ depois para começar de novo — são parâmetros de `sql/00_parameters.sql`, es
 de falha de cada funil. Nenhuma jornada de cliente real, processo de recuperação de serviço, programa de
 recuperação de churn ou reabertura de caso foi medido para produzi-los, e o atraso de retorno de 45 dias é um
 número redondo, não um achado.
+
+**As seis intervenções da onda 10 são inventadas, e o fato de terem funcionado também.** O dia em que foram
+subidas, o estágio que cada uma toca, o multiplicador da taxa, o multiplicador do atraso e o placebo que não faz
+nada são todos parâmetros de `sql/00_parameters.sql`. Nenhum lançamento, experimento, melhoria de processo,
+implantação de sistema ou resultado de Kaizen real é descrito em lugar nenhum, e nenhuma destas cifras diz o que
+uma intervenção de qualquer tipo alcançaria em qualquer organização. O que a onda mede não é se estas mudanças
+funcionam; é o que uma leitura delas reporta, dado que o gerador já sabe a resposta.
 
 **A coluna que nenhuma operação real tem é o ponto.** `declared_rate` é a taxa de conversão eventual a
 partir da qual o gerador foi construído — o gabarito. Um funil real não tem essa coluna, e é exatamente

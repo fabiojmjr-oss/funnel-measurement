@@ -33,7 +33,9 @@ words(n, english, portuguese) AS (
            (13, 'Thirteen so far', 'Treze até aqui'), (14, 'Fourteen so far', 'Quatorze até aqui'),
            (15, 'Fifteen so far', 'Quinze até aqui'),
            (16, 'Sixteen so far', 'Dezesseis até aqui'),
-           (17, 'Seventeen so far', 'Dezessete até aqui')
+           (17, 'Seventeen so far', 'Dezessete até aqui'),
+           (18, 'Eighteen so far', 'Dezoito até aqui'),
+           (19, 'Nineteen so far', 'Dezenove até aqui')
 ),
 figures(figure) AS (
     VALUES ('1.9826'), ('1.6988'), ('0.9522'), ('0.9907'), ('0.9218'), ('0.9524'),
@@ -110,7 +112,19 @@ figures(figure) AS (
            ('0.2374'), ('0.2911'), ('0.2475'), ('0.9590'), ('1.1762'), ('17.62'),
            ('1.1467'), ('0.2764'), ('0.2838'), ('1.1773'), ('0.1449'), ('0.1496'),
            ('1.2009'), ('1.0594'), ('1.2256'), ('1.0812'), ('1.1585'), ('0.9229'),
-           ('15.29'), ('18.04'), ('2.7503'), ('0.2049')
+           ('15.29'), ('18.04'), ('2.7503'), ('0.2049'),
+           -- Wave 10, the change somebody shipped.
+           ('46734'), ('98124'), ('107'), ('76'), ('447'),
+           ('0.2512'), ('0.3207'), ('0.1041'),
+           ('1.25'), ('1.30'), ('1.10'), ('0.50'), ('0.40'), ('0.60'),
+           ('0.2353'), ('0.3285'), ('0.3962'), ('0.2019'), ('0.2338'), ('0.1581'),
+           ('0.0803'), ('0.0826'), ('0.0294'), ('0.0614'), ('0.0627'), ('0.0218'),
+           ('0.1013'), ('0.1027'), ('0.0132'), ('0.4724'), ('0.4659'), ('0.0139'),
+           ('11.5'), ('24.3'),
+           ('0.6374'), ('0.4022'), ('0.1593'), ('0.0047'),
+           ('0.5385'), ('0.2174'), ('0.0357'),
+           ('0.2683'), ('0.2245'), ('0.2513'), ('0.32'),
+           ('0.1613'), ('0.1892'), ('0.2391'), ('0.4286'), ('0.3399')
 )
 SELECT 'a headline figure is missing from the English README' AS failure, figure AS detail
 FROM figures, english WHERE NOT contains(english.content, figure)
@@ -142,7 +156,9 @@ FROM (VALUES ('confusion matrix'), ('matriz de confusão'),
              ('urgency weight'), ('peso de urgência'),
              ('skip rate'), ('taxa de pulo'),
              ('fallback rate'), ('taxa de recuo'),
-             ('re-entry rate'), ('taxa de retorno')) AS t(phrase), disclaimer
+             ('re-entry rate'), ('taxa de retorno'),
+             ('intervention'), ('intervenção'),
+             ('placebo')) AS t(phrase), disclaimer
 WHERE NOT contains(disclaimer.content, phrase)
 
 UNION ALL
@@ -194,19 +210,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 19 AND NOT contains(english.content, 'Nineteen model files')
+WHERE n = 21 AND NOT contains(english.content, 'Twenty-one model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 18 AND NOT contains(english.content, 'eighteen assertion files')
+WHERE n = 19 AND NOT contains(english.content, 'nineteen assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 19 AND NOT contains(portuguese.content, 'Dezenove arquivos de modelo')
+WHERE n = 21 AND NOT contains(portuguese.content, 'Vinte e um arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 18 AND NOT contains(portuguese.content, 'dezoito de asserção')
+WHERE n = 19 AND NOT contains(portuguese.content, 'dezenove de asserção')
 
 UNION ALL
 -- The repository's own code is written in English, and until wave 7 nothing checked it.

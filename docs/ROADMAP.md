@@ -598,6 +598,75 @@ assumption about behaviour.
     population and its horizon is not a closed form, it is a slogan** - and the fact that this one was mine,
     in the wave about unstated assumptions, is the reason it is written down here.
 
+## Wave 10 — the change somebody shipped *(complete)*
+
+Every wave so far measures a funnel. This one measures a decision. `sql/e0_interventions.sql` ships one change
+per funnel on a declared day and builds both the world where it was shipped and the world where it was not:
+the same subjects, the same coin streams, walked twice. Two of the six raise a pass rate, two move only a
+delay and leave the eventual rate exactly alone, one moves both, and one is a placebo that does nothing.
+
+Three things make the word "causal" defensible here. Common random numbers - the changed world reads the same
+uniform draw against a larger threshold, so a multiplier at or above one cannot make any subject worse off,
+and that is asserted exactly: 107, 76 and 447 subjects gained a conversion and zero lost one. Two exact
+controls - subjects arriving before the change reproduce wave 1's log to the day (46734 rows) and so does
+every counterfactual (98124 rows), checked row for row rather than in aggregate. And the counterfactual
+itself, which is the answer key no operation has: the effect is measured on exactly the population that
+received the change, so there is no pre-period, no growth and no mix in the comparison.
+
+**Result 1 — a change that moves only a delay moves no conversion, exactly.** Whether a subject eventually
+reaches a stage does not depend on how long it took to get there, so the reach sets of the two worlds are
+identical row for row and only the dates differ. The causal lift is 0 at machine precision, not 0 within a
+band, and the assertion demands both halves: no conversion moved, and the dates did move. The second half is
+what would catch a silent join failure making every zero a zero for the wrong reason.
+
+**Result 2 — the before-and-after window reading gets the launch review backwards.** Thirty days of
+conversions before the change against thirty days after it: the change that converted nobody reads +0.3962
+and tops the page, while the two changes that genuinely raised conversion by a quarter and by a third read
++0.0218 and +0.0132 - noise, to any reviewer. The true lift is 11.5 and 24.3 times the reported one. The
+mechanism is wave 1's applied to a decision: the conversions inside the post-launch window belong mostly to
+arrivals from before it, so a rate change is nearly invisible there, while a speed-up pulls conversions that
+were already going to happen across the window boundary and every one is counted as new.
+
+**Result 3 — no single horizon separates a rate change from a speed change.** Reading both worlds on the same
+cohorts at the same maturity, a pure speed-up decays from +0.6374 at ten days to +0.0047 at sixty while a real
+rate lift converges upward toward its true value. At any one horizon the two are indistinguishable. The shape
+across horizons is the only signature, which is why a launch read once, at whatever maturity the report
+happens to use, cannot answer the question it was commissioned to answer.
+
+**Result 4 — the horizon decides the ranking.** At twenty days the two changes that converted nobody rank
+first and second (+0.5385 and +0.4022) and the change that converted the most people ranks below both of them
+(+0.1892 against a true +0.3207). At thirty days the page looks respectable and is still wrong: the two real
+lifts are in the wrong order and a worthless change is credited with +0.2174.
+
+**Result 5 — the placebo reads exactly zero, and that is a property of the construction rather than a claim
+about experiments.** Because both worlds share their coins, a change that does nothing produces two identical
+logs and a lift of exactly zero at every horizon. A real A/B test on a placebo reads noise, not zero. The
+placebo is here so that a zero on this account has a known meaning, not to suggest that measurement is
+noiseless.
+
+### Defects found and recorded
+
+18. **A standard error priced on the wrong scale.** The closed form compares a *ratio* of two correlated
+    means, and the first version of the tolerance was four standard errors of the paired *difference* - the
+    right idea about the correlation and the wrong units. It flagged retencao's 0.0207 deviation as a failure
+    against a 0.0151 band that was measuring a different quantity, and I spent the first minutes looking for a
+    bug in the generator rather than in the band. The fix is the delta method with all three terms, covariance
+    included: Var(X/Y) = Var(X)/Y^2 + X^2*Var(Y)/Y^4 - 2*X*Cov(X,Y)/Y^3. Dropping the covariance overstates
+    the band; forgetting the denominator is a sample understates it. **This is the third time in this
+    repository that a standard error was the defect rather than the estimate** - after wave 5's naive sd/root-n
+    that understated the interval by up to 6.362 times, and wave 5's own first attempt at clustering - and the
+    pattern is worth naming: the estimate gets checked against a closed form and the error bar gets checked
+    against nothing.
+19. **An undefined ratio ranked first, because nan is not treated as missing.** A funnel whose baseline
+    converted nobody inside the shortest horizon produced a lift of zero over zero. DuckDB gives NaN a total
+    ordering above every real value - `nan > 0.10` is true and `rank() OVER (ORDER BY x DESC)` puts it first -
+    so the ranking crowned an undefined quantity as the best intervention of the six, and the comparison
+    assertions agreed with it. The closed-form assertion did fire, because `abs(nan - x) > tol` is also true,
+    which is the only reason it was found at all. Fixed by excluding an empty baseline where the table is
+    built, and by an assertion over every published lift and tolerance that rejects null, nan and infinity -
+    so the filter cannot be removed quietly. **A guard that exists only as a `WHERE` clause in a model is not
+    a guard; it is a habit.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows

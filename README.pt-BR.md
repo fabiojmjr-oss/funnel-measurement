@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Dezenove arquivos de modelo, dezoito de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Vinte e um arquivos de modelo, dezenove de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -903,6 +903,106 @@ para chegar à negociação" estão 18% distantes. Nada no esquema registra qual
 > **Antes de ler qualquer funil, pergunte se um sujeito pode estar em dois estágios, em nenhum, ou no mesmo
 > duas vezes. Se puder, o número do painel não tem denominador.**
 
+## E a mudança que alguém subiu: o ganho que é só atraso
+
+As ondas 1 a 9 medem um funil. Esta mede uma **decisão**. Seis mudanças são subidas no mesmo dia, uma por
+funil, e [`sql/e0_interventions.sql`](sql/e0_interventions.sql) constrói tanto o mundo em que foram subidas
+quanto o mundo em que não foram — os mesmos sujeitos, os mesmos fluxos de moedas, caminhados duas vezes. Duas
+das seis elevam uma taxa de passagem. Duas mexem só num atraso e deixam a taxa eventual **exatamente** igual.
+Uma mexe nas duas coisas. E uma é placebo: anunciada, subida, e não faz nada.
+
+A construção merece a palavra *causal*, que este repositório não usa de leve:
+
+- **Números aleatórios comuns.** O mundo alterado lê o mesmo sorteio uniforme contra um limiar maior, então um
+  sujeito que passava o estágio continua passando. Um multiplicador maior ou igual a um não pode piorar a
+  situação de ninguém, e isso é afirmado como propriedade exata e não como tendência: **107, 76 e 447 sujeitos
+  ganharam uma conversão, e zero perderam**, nas três mudanças que elevaram uma taxa.
+- **Dois controles exatos.** Sujeitos que chegaram antes da mudança reproduzem o log da onda 1 até o dia
+  (46734 linhas), e todo contrafactual também (98124 linhas). Os dois são checados linha por linha.
+- **Um contrafactual que operação nenhuma tem.** O efeito é medido contra a mesma população que recebeu a
+  mudança, então não há período anterior, nem crescimento, nem mix para discutir. Essa coluna é o gabarito, e
+  é por isso que os erros abaixo são da leitura e não da amostra.
+
+### O que as seis mudanças fizeram
+
+| Funil | mudança | ganho verdadeiro |
+| --- | --- | --- |
+| `venda` | taxa de fechamento ×1,25 | **+0,2512** |
+| `retencao` | taxa de sinalização de risco ×1,30 | **+0,3207** |
+| `demanda` | taxa ×1,10 e atraso ×0,60 | **+0,1041** |
+| `ativacao` | atraso ×0,50, taxa intocada | **0,0** |
+| `resgate` | atraso ×0,40, taxa intocada | **0,0** |
+| `atendimento` | nada | **0,0** |
+
+Os três zeros são exatos, não pequenos: uma mudança que mexe só num atraso não move conversão alguma, porque
+se um sujeito eventualmente alcança um estágio não depende de quanto tempo levou. Os conjuntos de alcance dos
+dois mundos são idênticos, linha por linha. Só as datas diferem, e `tests/assert_interventions.sql` afirma as
+duas metades — que nenhuma conversão se moveu, e que as datas se moveram.
+
+### A leitura que um painel toma inverte o resultado
+
+Trinta dias de conversões antes da mudança contra trinta dias depois dela, que é a comparação de toda revisão
+de lançamento:
+
+| Funil | janela antes | janela depois | **ganho aparente** | ganho verdadeiro |
+| --- | --- | --- | --- | --- |
+| `ativacao` | 0,2353 | 0,3285 | **+0,3962** | **0,0** |
+| `demanda` | 0,2019 | 0,2338 | +0,1581 | +0,1041 |
+| `resgate` | 0,0803 | 0,0826 | +0,0294 | **0,0** |
+| `venda` | 0,0614 | 0,0627 | **+0,0218** | **+0,2512** |
+| `retencao` | 0,1013 | 0,1027 | **+0,0132** | **+0,3207** |
+| `atendimento` | 0,4724 | 0,4659 | −0,0139 | 0,0 |
+
+Leia essa tabela duas vezes. **A maior vitória da página não converteu ninguém.** As duas mudanças que de fato
+elevaram conversão — em um quarto e em um terço — aparecem como +2,2% e +1,3%, que qualquer revisor chamaria de
+ruído. O ganho real é 11,5 e 24,3 vezes o reportado.
+
+O mecanismo é o da onda 1, aplicado a uma decisão em vez de a uma taxa. As conversões que caem nos trinta dias
+depois de um lançamento pertencem em sua maioria a sujeitos que chegaram *antes* dele, então uma mudança de
+taxa é quase invisível ali. Já uma aceleração puxa para dentro da janela conversões que já iam acontecer, e a
+janela conta cada uma delas como nova.
+
+> **Um lançamento que mexe no seu tempo de ciclo vence um lançamento que mexe na sua taxa de conversão em
+> qualquer relatório antes-e-depois, sempre. O primeiro aparece imediatamente e o segundo aparece depois do
+> atraso do próprio funil.**
+
+### E nenhum horizonte único distingue os dois
+
+Compare os dois mundos corretamente — mesmas coortes, lidas na mesma maturidade — e varra o horizonte:
+
+| Horizonte | `ativacao` (real 0) | `resgate` (real 0) | `venda` (real +0,25) | `retencao` (real +0,30) |
+| --- | --- | --- | --- | --- |
+| 10 dias | **+0,6374** | +3,0 | +0,2683 | +0,1613 |
+| 20 dias | **+0,4022** | **+0,5385** | +0,2245 | **+0,1892** |
+| 30 dias | **+0,1593** | **+0,2174** | +0,2513 | +0,2391 |
+| 60 dias | +0,0047 | +0,0357 | +0,32 | +0,4286 |
+
+Uma aceleração pura começa enorme e decai para zero conforme o horizonte passa a durar mais que o funil. Um
+ganho real de taxa converge para o seu valor verdadeiro. **Em qualquer horizonte único os dois parecem
+iguais**, e a forma ao longo dos horizontes é a única coisa que os separa — e é por isso que ler um lançamento
+uma vez, na maturidade que o relatório por acaso usa, não responde à pergunta que motivou a medição.
+
+### O ranking que uma revisão recebe
+
+| Aos 20 dias | medido | verdadeiro | posição real |
+| --- | --- | --- | --- |
+| 1º `resgate` | +0,5385 | **0,0** | 6º |
+| 2º `ativacao` | +0,4022 | **0,0** | 5º |
+| 3º `demanda` | +0,3399 | +0,1041 | 3º |
+| 4º `venda` | +0,2245 | +0,2512 | 2º |
+| 5º `retencao` | **+0,1892** | **+0,3207** | **1º** |
+
+No horizonte de vinte dias as duas mudanças que não converteram ninguém ficam em **primeiro e segundo**, e a
+mudança que converteu mais gente fica **abaixo das duas**. Aos trinta dias a página parece respeitável e
+continua errada: os dois ganhos reais estão na ordem trocada, e uma mudança que não vale nada é creditada com
++0,2174.
+
+> **Antes de ranquear intervenções por ganho medido, verifique se alguma delas mexeu num tempo de ciclo. Se
+> mexeu, o ranking é um ranking de tempos de ciclo.**
+
+Defeitos 18 e 19 em [`docs/ROADMAP.md`](docs/ROADMAP.md) — um erro padrão calculado na escala errada, e uma
+razão indefinida que o DuckDB colocou em primeiro lugar porque ordena `nan` acima de todo número real.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -973,6 +1073,18 @@ para chegar à negociação" estão 18% distantes. Nada no esquema registra qual
   alcançá-lo" são dois números 18% distantes, e `min` contra `max` dentro de um `GROUP BY` é a decisão não
   documentada mais consequente de um relatório de funil.
 
+- **Nunca leia um lançamento numa janela antes-e-depois.** As conversões dentro da janela posterior a um
+  lançamento pertencem em sua maioria a chegadas anteriores a ele, então uma mudança real de taxa fica quase
+  invisível e uma mudança de tempo de ciclo fica enorme. Aqui os dois ganhos genuínos de conversão apareceram
+  como +2,2% e +1,3% enquanto uma mudança que não converteu ninguém apareceu como +39,6% e liderou a página.
+- **Pergunte o que a mudança deveria fazer antes de ler o que ela fez.** Uma mudança de atraso e uma mudança
+  de taxa movem o mesmo número reportado na mesma direção. Só uma delas cria conversão, e nenhuma leitura de
+  horizonte único distingue as duas.
+- **Leia o ganho em várias maturidades e olhe a forma.** Um ganho de taxa converge para cima até uma
+  constante; uma aceleração decai para zero. Uma leitura é anedota; a curva é o diagnóstico.
+- **Suba um placebo de vez em quando.** Um sistema de medição que nunca produziu um resultado nulo não
+  demonstrou ser capaz de produzir um.
+
 ## Rodando
 
 ```bash
@@ -1006,6 +1118,8 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | A melhor regra de parada contra uma olhada fixa, em toda utilização — a comparação que saiu ao contrário. |
 | [`sql/d0_movements.sql`](sql/d0_movements.sql) | Um segundo log de eventos em que sujeitos pulam um estágio, voltam ao anterior e retornam — mesmos sujeitos, mesmas moedas de avanço. |
 | [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | As mesmas leituras tomadas nos dois logs, a forma fechada do passo três, e o que a contagem de linhas faz com o denominador. |
+| [`sql/e0_interventions.sql`](sql/e0_interventions.sql) | Seis mudanças subidas num único dia, e o mundo em que não foram — os mesmos sujeitos e as mesmas moedas, caminhados duas vezes. |
+| [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | O ganho causal, o ganho medido em seis horizontes, a leitura por janela antes-e-depois, e o ranking que uma revisão recebe. |
 | [`tests/`](tests) | Dezessete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
@@ -1031,7 +1145,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Dezessete até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Dezenove até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

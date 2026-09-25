@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Nineteen model files, eighteen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Twenty-one model files, nineteen assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -898,6 +898,105 @@ reach negotiation" are 18% apart. Nothing in the schema records which one a repo
 > **Before reading any funnel, ask whether a subject can be in two stages, in none, or in the same one
 > twice. If it can, the number on the dashboard has no denominator.**
 
+## And the change somebody shipped: the lift that is only a delay
+
+Waves 1 to 9 measure a funnel. This one measures a **decision**. Six changes are shipped on the same day,
+one per funnel, and [`sql/e0_interventions.sql`](sql/e0_interventions.sql) builds both the world where they
+were shipped and the world where they were not — the same subjects, the same coin streams, walked twice. Two
+of the six raise a pass rate. Two move only a delay and leave the eventual rate **exactly** alone. One moves
+both. One is a placebo: announced, shipped, and does nothing.
+
+The construction earns the word *causal*, which is not a word this repository uses lightly:
+
+- **Common random numbers.** The changed world reads the same uniform draw against a larger threshold, so a
+  subject that cleared a stage before still clears it. A multiplier at or above one cannot make anybody worse
+  off, and that is asserted as an exact property rather than a tendency: **107, 76 and 447 subjects gained a
+  conversion, and zero lost one, across the three changes that raised a rate.**
+- **Two exact controls.** Subjects that arrived before the change reproduce wave 1's log to the day (46734
+  rows), and so does every counterfactual (98124 rows). Both are checked row for row.
+- **A counterfactual no operation has.** The effect is measured against the same population that received the
+  change, so there is no pre-period, no growth, and no mix to argue about. That column is the answer key, and
+  it is the reason the errors below are the reading's and not the sample's.
+
+### What the six changes did
+
+| Funnel | change | true lift |
+| --- | --- | --- |
+| `venda` | closing rate ×1.25 | **+0.2512** |
+| `retencao` | risk-flagging rate ×1.30 | **+0.3207** |
+| `demanda` | rate ×1.10 and delay ×0.60 | **+0.1041** |
+| `ativacao` | delay ×0.50, rate untouched | **0.0** |
+| `resgate` | delay ×0.40, rate untouched | **0.0** |
+| `atendimento` | nothing | **0.0** |
+
+The three zeros are exact, not small: a change that moves only a delay moves no conversion at all, because
+whether a subject eventually reaches a stage does not depend on how long it took. The reach sets of the two
+worlds are identical, row for row. Only the dates differ, and `tests/assert_interventions.sql` asserts both
+halves — that no conversion moved, and that the dates did.
+
+### The reading a dashboard takes gets it backwards
+
+Thirty days of conversions before the change against thirty days after it, which is the comparison in every
+launch review:
+
+| Funnel | window before | window after | **apparent lift** | true lift |
+| --- | --- | --- | --- | --- |
+| `ativacao` | 0.2353 | 0.3285 | **+0.3962** | **0.0** |
+| `demanda` | 0.2019 | 0.2338 | +0.1581 | +0.1041 |
+| `resgate` | 0.0803 | 0.0826 | +0.0294 | **0.0** |
+| `venda` | 0.0614 | 0.0627 | **+0.0218** | **+0.2512** |
+| `retencao` | 0.1013 | 0.1027 | **+0.0132** | **+0.3207** |
+| `atendimento` | 0.4724 | 0.4659 | −0.0139 | 0.0 |
+
+Read that table twice. **The biggest win on the page converted nobody.** The two changes that genuinely
+raised conversion — by a quarter and by a third — read as +2.2% and +1.3%, which any reviewer would call
+noise. The real lift is 11.5 and 24.3 times the reported one.
+
+The mechanism is wave 1's, applied to a decision instead of a rate. The conversions landing inside the
+thirty days after a launch belong mostly to subjects who arrived *before* it, so a rate change is almost
+invisible there. A speed-up, by contrast, pulls conversions that were already going to happen forward across
+the window boundary, and the window counts every one of them as new.
+
+> **A launch that moves your cycle time will beat a launch that moves your conversion rate on any
+> before-and-after report, every time. The first shows up immediately and the second shows up after the
+> funnel's own delay.**
+
+### And no single horizon can tell them apart
+
+Compare the two worlds properly — same cohorts, both read at the same maturity — and sweep the horizon:
+
+| Horizon | `ativacao` (true 0) | `resgate` (true 0) | `venda` (true +0.25) | `retencao` (true +0.30) |
+| --- | --- | --- | --- | --- |
+| 10 days | **+0.6374** | +3.0 | +0.2683 | +0.1613 |
+| 20 days | **+0.4022** | **+0.5385** | +0.2245 | **+0.1892** |
+| 30 days | **+0.1593** | **+0.2174** | +0.2513 | +0.2391 |
+| 60 days | +0.0047 | +0.0357 | +0.32 | +0.4286 |
+
+A pure speed-up starts enormous and decays toward zero as the horizon outlasts the funnel. A real rate lift
+converges toward its true value. **At any single horizon the two look the same**, and the shape across
+horizons is the only thing that separates them — which is why reading a launch once, at whatever maturity the
+report happens to use, cannot answer the question it was commissioned to answer.
+
+### The ranking a review receives
+
+| At 20 days | measured | true | true rank |
+| --- | --- | --- | --- |
+| 1st `resgate` | +0.5385 | **0.0** | 6th |
+| 2nd `ativacao` | +0.4022 | **0.0** | 5th |
+| 3rd `demanda` | +0.3399 | +0.1041 | 3rd |
+| 4th `venda` | +0.2245 | +0.2512 | 2nd |
+| 5th `retencao` | **+0.1892** | **+0.3207** | **1st** |
+
+At the twenty-day horizon the two changes that converted nobody rank **first and second**, and the change
+that converted the most people ranks **below both of them**. At thirty days the page looks respectable and is
+still wrong: the two real lifts are in the wrong order, and a change worth nothing is credited with +0.2174.
+
+> **Before ranking interventions by measured lift, check whether any of them changed a cycle time. If one
+> did, the ranking is a ranking of cycle times.**
+
+Defects 18 and 19 in [`docs/ROADMAP.md`](docs/ROADMAP.md) — a standard error priced on the wrong scale, and
+an undefined ratio that DuckDB ranked first because it orders `nan` above every real number.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -965,6 +1064,18 @@ reach negotiation" are 18% apart. Nothing in the schema records which one a repo
   18% apart, and `min` versus `max` inside a `GROUP BY` is the most consequential undocumented decision in
   a funnel report.
 
+- **Never read a launch on a before-and-after window.** The conversions inside the window after a launch
+  mostly belong to arrivals from before it, so a real rate change is nearly invisible and a cycle-time change
+  is enormous. Here the two genuine conversion lifts read as +2.2% and +1.3% while a change that converted
+  nobody read as +39.6% and topped the page.
+- **Ask what the change was supposed to do before reading what it did.** A change to a delay and a change to
+  a rate move the same reported number in the same direction. Only one of them creates a conversion, and no
+  single-horizon reading distinguishes them.
+- **Read the lift at several maturities and look at the shape.** A rate lift converges upward toward a
+  constant; a speed-up decays toward zero. One reading is an anecdote; the curve is the diagnostic.
+- **Ship a placebo occasionally.** A measurement system that has never produced a null result has not been
+  shown to be capable of producing one.
+
 ## Running it
 
 ```bash
@@ -998,6 +1109,8 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/c5_stopping_sweep.sql`](sql/c5_stopping_sweep.sql) | The best stopping rule against one fixed look, at every utilisation — the comparison that came out the other way. |
 | [`sql/d0_movements.sql`](sql/d0_movements.sql) | A second event log where subjects skip a stage, fall back to the one before, and come back — same subjects, same forward coins. |
 | [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | The same readings taken on both logs, the step-three closed form, and what row-counting does to the denominator. |
+| [`sql/e0_interventions.sql`](sql/e0_interventions.sql) | Six changes shipped on one day, and the world where they were not — the same subjects and the same coins, walked twice. |
+| [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | The causal lift, the lift measured at six horizons, the before-and-after window reading, and the ranking a review receives. |
 | [`tests/`](tests) | Seventeen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
@@ -1022,7 +1135,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Seventeen so far, in
+**And defects are recorded rather than quietly fixed.** Nineteen so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,
