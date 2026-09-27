@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Twenty-three model files, twenty assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Twenty-four model files, twenty-one assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -1100,6 +1100,18 @@ put in front of a review.
 
 Defects 20 and 21 in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+## Where to start
+
+This page is organised by wave, which is the order the work happened in.
+**[`docs/FINDINGS.md`](docs/FINDINGS.md) is the same material organised by the question you arrived
+with** — thirty-four findings in seven groups, each naming the one query that prints it, the model that
+produces it and the assertion that fails if it stops being true. That index is declared in
+[`sql/g0_index.sql`](sql/g0_index.sql) and compiled against the repository by
+[`tests/assert_index.sql`](tests/assert_index.sql), so it cannot quietly go stale.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) has every result wave by wave, what is deliberately absent, what is
+still open, and the twenty-one recorded defects.
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -1229,6 +1241,7 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | The causal lift, the lift measured at six horizons, the before-and-after window reading, and the ranking a review receives. |
 | [`sql/f0_segments.sql`](sql/f0_segments.sql) | Three origins with drifting shares and drifting conversion, assigned to wave 1's own subjects. |
 | [`sql/f5_mix_readings.sql`](sql/f5_mix_readings.sql) | The two-period reading, the exact decomposition into within and between, the standardised rate, and the same reversal in the declared parameters. |
+| [`sql/g0_index.sql`](sql/g0_index.sql) | The index of findings, declared as rows so that the table of contents is compiled rather than written. |
 | [`tests/`](tests) | Seventeen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 

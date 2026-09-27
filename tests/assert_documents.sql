@@ -10,6 +10,8 @@ WITH docs AS (
     UNION ALL SELECT 'README.pt-BR.md', content FROM read_text('README.pt-BR.md')
     UNION ALL SELECT 'DISCLAIMER.md', content FROM read_text('DISCLAIMER.md')
     UNION ALL SELECT 'docs/ROADMAP.md', content FROM read_text('docs/ROADMAP.md')
+    UNION ALL SELECT 'docs/FINDINGS.md', content FROM read_text('docs/FINDINGS.md')
+    UNION ALL SELECT 'docs/FINDINGS.pt-BR.md', content FROM read_text('docs/FINDINGS.pt-BR.md')
 ),
 english AS (SELECT content FROM docs WHERE name = 'README.md'),
 portuguese AS (SELECT content FROM docs WHERE name = 'README.pt-BR.md'),
@@ -222,19 +224,19 @@ UNION ALL
 -- The counts the READMEs quote about the repository's own shape.
 SELECT 'the English README does not quote the number of model files', 'models'
 FROM english, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 23 AND NOT contains(english.content, 'Twenty-three model files')
+WHERE n = 24 AND NOT contains(english.content, 'Twenty-four model files')
 UNION ALL
 SELECT 'the English README does not quote the number of assertion files', 'assertions'
 FROM english, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 20 AND NOT contains(english.content, 'twenty assertion files')
+WHERE n = 21 AND NOT contains(english.content, 'twenty-one assertion files')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of model files', 'models'
 FROM portuguese, (SELECT count(*) AS n FROM glob('sql/*.sql'))
-WHERE n = 23 AND NOT contains(portuguese.content, 'Vinte e três arquivos de modelo')
+WHERE n = 24 AND NOT contains(portuguese.content, 'Vinte e quatro arquivos de modelo')
 UNION ALL
 SELECT 'the Portuguese README does not quote the number of assertion files', 'assertions'
 FROM portuguese, (SELECT count(*) AS n FROM glob('tests/assert_*.sql'))
-WHERE n = 20 AND NOT contains(portuguese.content, 'vinte de asserção')
+WHERE n = 21 AND NOT contains(portuguese.content, 'vinte e um de asserção')
 
 UNION ALL
 -- The repository's own code is written in English, and until wave 7 nothing checked it.

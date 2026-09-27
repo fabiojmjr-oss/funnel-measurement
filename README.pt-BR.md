@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Vinte e três arquivos de modelo, vinte de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Vinte e quatro arquivos de modelo, vinte e um de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -1105,6 +1105,18 @@ põe na frente de uma revisão.
 
 Defeitos 20 e 21 em [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+## Por onde começar
+
+Esta página é organizada por onda, que é a ordem em que o trabalho aconteceu.
+**[`docs/FINDINGS.pt-BR.md`](docs/FINDINGS.pt-BR.md) é o mesmo material organizado pela pergunta com que
+você chegou** — trinta e quatro achados em sete grupos, cada um nomeando a única consulta que o imprime, o
+modelo que o produz e a asserção que falha se ele deixar de ser verdade. Esse índice é declarado em
+[`sql/g0_index.sql`](sql/g0_index.sql) e compilado contra o repositório por
+[`tests/assert_index.sql`](tests/assert_index.sql), então ele não pode envelhecer em silêncio.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) tem cada resultado onda por onda, o que está deliberadamente ausente,
+o que segue aberto, e os vinte e um defeitos registrados.
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -1237,6 +1249,7 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | O ganho causal, o ganho medido em seis horizontes, a leitura por janela antes-e-depois, e o ranking que uma revisão recebe. |
 | [`sql/f0_segments.sql`](sql/f0_segments.sql) | Três origens com participações e conversão derivando, atribuídas aos próprios sujeitos da onda 1. |
 | [`sql/f5_mix_readings.sql`](sql/f5_mix_readings.sql) | A leitura de dois períodos, a decomposição exata entre dentro e entre, a taxa padronizada, e a mesma reversão nos parâmetros declarados. |
+| [`sql/g0_index.sql`](sql/g0_index.sql) | O índice de achados, declarado como linhas para que o sumário seja compilado em vez de escrito. |
 | [`tests/`](tests) | Dezessete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 

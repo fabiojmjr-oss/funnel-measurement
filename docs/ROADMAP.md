@@ -3,6 +3,20 @@
 What is built, what is deliberately absent, what is still open, and the defects found on the way. In
 English, like the rest of the code; the findings themselves are in both languages in the two READMEs.
 
+## Two ways to read this
+
+This file is the record, wave by wave: what each one built, what it found, and what went wrong in it.
+It is the right shape for somebody following the work and the wrong shape for somebody arriving with a
+question.
+
+[`docs/FINDINGS.md`](FINDINGS.md) is the other shape - thirty-four findings grouped by the question a
+reader shows up with, each naming the one query that prints it. That index is declared as rows in
+[`sql/g0_index.sql`](../sql/g0_index.sql) and compiled against this repository by
+[`tests/assert_index.sql`](../tests/assert_index.sql): a report nothing points at, a renamed file, a
+figure the build does not already pin, or a wave nobody indexed all break `make check`. The reason is
+the one this file keeps recording - a convention stated and not compiled is a convention already broken -
+and a table of contents is exactly the kind of document that stops being true in silence.
+
 ## Wave 1 — the reading, not the funnel *(complete)*
 
 The question this repository opens with is not "how do these funnels perform". It is "what is a funnel
