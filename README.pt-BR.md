@@ -22,6 +22,18 @@ quebra o build em vez de deixar o texto silenciosamente errado.
 Nenhum dado de empregador, cliente, consumidor ou fornecedor aparece em qualquer parte — ver
 [`DISCLAIMER.md`](DISCLAIMER.md).
 
+## Por onde começar
+
+Esta página é organizada por onda, que é a ordem em que o trabalho aconteceu.
+**[`docs/FINDINGS.pt-BR.md`](docs/FINDINGS.pt-BR.md) é o mesmo material organizado pela pergunta com que
+você chegou** — trinta e quatro achados em sete grupos, cada um nomeando a única consulta que o imprime, o
+modelo que o produz e a asserção que falha se ele deixar de ser verdade. Esse índice é declarado em
+[`sql/g0_index.sql`](sql/g0_index.sql) e compilado contra o repositório por
+[`tests/assert_index.sql`](tests/assert_index.sql), então ele não pode envelhecer em silêncio.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) tem cada resultado onda por onda, o que está deliberadamente ausente,
+o que segue aberto, e os vinte e um defeitos registrados.
+
 ## Os seis funis
 
 Declarados em [`sql/00_parameters.sql`](sql/00_parameters.sql), cada número deles. **47.317** sujeitos ao
@@ -1104,18 +1116,6 @@ discutida em vez de demonstrada — e por isso que a decomposição, que é exat
 põe na frente de uma revisão.
 
 Defeitos 20 e 21 em [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-## Por onde começar
-
-Esta página é organizada por onda, que é a ordem em que o trabalho aconteceu.
-**[`docs/FINDINGS.pt-BR.md`](docs/FINDINGS.pt-BR.md) é o mesmo material organizado pela pergunta com que
-você chegou** — trinta e quatro achados em sete grupos, cada um nomeando a única consulta que o imprime, o
-modelo que o produz e a asserção que falha se ele deixar de ser verdade. Esse índice é declarado em
-[`sql/g0_index.sql`](sql/g0_index.sql) e compilado contra o repositório por
-[`tests/assert_index.sql`](tests/assert_index.sql), então ele não pode envelhecer em silêncio.
-
-[`docs/ROADMAP.md`](docs/ROADMAP.md) tem cada resultado onda por onda, o que está deliberadamente ausente,
-o que segue aberto, e os vinte e um defeitos registrados.
 
 ## O que fazer em vez disso
 

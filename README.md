@@ -21,6 +21,18 @@ instead of leaving the text quietly wrong.
 
 No employer, client, customer or vendor data appears anywhere — see [`DISCLAIMER.md`](DISCLAIMER.md).
 
+## Where to start
+
+This page is organised by wave, which is the order the work happened in.
+**[`docs/FINDINGS.md`](docs/FINDINGS.md) is the same material organised by the question you arrived
+with** — thirty-four findings in seven groups, each naming the one query that prints it, the model that
+produces it and the assertion that fails if it stops being true. That index is declared in
+[`sql/g0_index.sql`](sql/g0_index.sql) and compiled against the repository by
+[`tests/assert_index.sql`](tests/assert_index.sql), so it cannot quietly go stale.
+
+[`docs/ROADMAP.md`](docs/ROADMAP.md) has every result wave by wave, what is deliberately absent, what is
+still open, and the twenty-one recorded defects.
+
 ## The six funnels
 
 Declared in [`sql/00_parameters.sql`](sql/00_parameters.sql), every number of them. **47,317** subjects
@@ -1099,18 +1111,6 @@ than demonstrated — and why the decomposition, which needs no sample at all to
 put in front of a review.
 
 Defects 20 and 21 in [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-## Where to start
-
-This page is organised by wave, which is the order the work happened in.
-**[`docs/FINDINGS.md`](docs/FINDINGS.md) is the same material organised by the question you arrived
-with** — thirty-four findings in seven groups, each naming the one query that prints it, the model that
-produces it and the assertion that fails if it stops being true. That index is declared in
-[`sql/g0_index.sql`](sql/g0_index.sql) and compiled against the repository by
-[`tests/assert_index.sql`](tests/assert_index.sql), so it cannot quietly go stale.
-
-[`docs/ROADMAP.md`](docs/ROADMAP.md) has every result wave by wave, what is deliberately absent, what is
-still open, and the twenty-one recorded defects.
 
 ## What to do instead
 
