@@ -13,7 +13,7 @@ de sinais opostos, e qual deles vence depende de a demanda estar subindo ou cain
 funil leva. Em um dos seis ela marca **1,98 vez** a taxa real de conversão. Em outro marca **0,92 vez**.
 Mesmo motor, mesmo comportamento, nenhum bug.
 
-Tudo aqui é **SQL**. Vinte e um arquivos de modelo, dezenove de asserção, um Makefile que decide a ordem, e nenhuma
+Tudo aqui é **SQL**. Vinte e três arquivos de modelo, vinte de asserção, um Makefile que decide a ordem, e nenhuma
 segunda linguagem: uma asserção é uma consulta que devolve as linhas que a quebram, então zero linhas é
 aprovação e o arcabouço não precisa de framework de teste. Todo número nos documentos abaixo é
 re-derivado por `tests/assert_published_figures.sql`, então uma mudança que mova uma cifra publicada
@@ -1003,6 +1003,108 @@ continua errada: os dois ganhos reais estão na ordem trocada, e uma mudança qu
 Defeitos 18 e 19 em [`docs/ROADMAP.md`](docs/ROADMAP.md) — um erro padrão calculado na escala errada, e uma
 razão indefinida que o DuckDB colocou em primeiro lugar porque ordena `nan` acima de todo número real.
 
+## E a leitura que se moveu porque a população se moveu
+
+Toda onda até aqui mede uma população. Ela não existe. Sujeitos chegam por origens que convertem a taxas
+diferentes, e a participação de cada origem muda — o que faz de toda leitura agregada uma média ponderada
+cujos pesos são, eles próprios, uma série temporal. E nada num relatório de funil diz isso.
+
+[`sql/f0_segments.sql`](sql/f0_segments.sql) dá a cada sujeito da onda 1 uma de três origens e o caminha de
+novo. As contagens de chegada ficam intactas, então nenhuma figura anterior se move. O que muda é que a taxa
+de passagem do segundo estágio passa a ser a taxa declarada vezes o multiplicador da origem — e tanto as
+participações quanto os multiplicadores derivam ao longo do horizonte.
+
+**Os dois períodos são metades do horizonte maduro.** Toda coorte neles teve a janela de maturidade inteira
+para converter, então a prescrição da onda 1 já está aplicada a cada figura abaixo. O que se move aqui não é
+a janela. E é esse o ponto: este é um segundo mecanismo, ortogonal ao primeiro, e corrigir o primeiro não
+faz absolutamente nada sobre ele.
+
+### Toda origem melhorou. O total piorou.
+
+| Origem | 1ª metade | 2ª metade | mudança |
+| --- | --- | --- | --- |
+| `direto` | 0,6430 | 0,7022 | **+0,0592** |
+| `parceiro` | 0,4551 | 0,4983 | **+0,0432** |
+| `campanha` | 0,2343 | 0,2515 | **+0,0172** |
+| **Agregado** | **0,4890** | **0,4544** | **−0,0347** |
+
+Nenhuma origem caiu. O número do painel caiu três pontos e meio, sobre 12388 e 20836 sujeitos, e a queda
+tem seis erros padrão de largura.
+
+A razão está nos pesos: `direto` caiu de 0,4642 das chegadas para 0,2838 enquanto `campanha` subiu de 0,2415
+para 0,4126. A melhor origem encolheu e a pior cresceu, e a composição se moveu mais do que as taxas.
+
+Isso não é uma história de amostragem. A mesma reversão está nos parâmetros declarados, com a ponderação por
+chegadas que o mecanismo de crescimento da onda 1 exige — **a composição de um período é a média das
+participações diárias ponderada por chegadas, não a participação no ponto médio**, porque os dias finais de
+um período carregam mais sujeitos que os iniciais:
+
+| Declarado | 1ª metade | 2ª metade |
+| --- | --- | --- |
+| multiplicador `direto` | 0,9082 | **0,9252** |
+| multiplicador `parceiro` | 0,6465 | **0,6595** |
+| multiplicador `campanha` | 0,3272 | **0,3399** |
+| **Média ponderada** | **0,692221** | **0,605715** |
+
+Três números para cima, a média deles para baixo. Isso é aritmética, não evidência.
+
+### A decomposição que não deixa resto
+
+A mudança se divide no que aconteceu dentro das origens e no que aconteceu com os pesos delas. Escrita com a
+*média* das participações e taxas dos dois períodos —
+
+```
+Δ(Σ w·p) = Σ (w₀+w₁)/2 · (p₁−p₀)  +  Σ (p₀+p₁)/2 · (w₁−w₀)
+```
+
+— os dois termos somam **exatamente** a mudança. A álgebra colapsa em `Σw₁p₁ − Σw₀p₀` sem sobra alguma, e é
+por isso que a asserção sobre ela é em precisão de máquina e não dentro de uma tolerância.
+
+| Agrupado | |
+| --- | --- |
+| Mudança no agregado | −0,034664 |
+| Dentro das origens | **+0,040673** |
+| Entre as origens (o mix) | **−0,075337** |
+| Resíduo | **0,0** |
+| Mix ÷ dentro | **1,8523** |
+
+O efeito de mix é **1,85 vez** o efeito dentro das origens e aponta para o outro lado. E a divisão de manual
+— mudança de taxa nas participações *iniciais*, mudança de participação nas taxas *iniciais* — deixa o termo
+cruzado `Σ Δw·Δp` sem explicação: **−0,007324, um quinto de todo o movimento.** Uma decomposição com sobra
+tem a sobra batizada de "interação" e depois interpretada.
+
+### Um conjunto diferente de pesos
+
+Segure a composição nas participações da primeira metade e leia as taxas da segunda:
+
+| | reportado | padronizado |
+| --- | --- | --- |
+| Agrupado | **−0,0347** | **+0,0443** |
+| `demanda` | **−0,0864** | **+0,0078** |
+
+Mesmos sujeitos, mesmas conversões, mesma definição de convertido. O sinal inverte. E `demanda` é o caso mais
+extremo da tabela: padronizado, moveu menos de um ponto percentual; como reportado, perdeu mais de oito.
+**Todo o movimento foi quem chegou.**
+
+> **Uma taxa de funil é uma média ponderada, e os pesos são uma série temporal que ninguém plota. Antes de
+> explicar por que uma taxa se moveu, padronize o mix e veja se ela se moveu.**
+
+### O achado que eu não queria
+
+A primeira versão desta onda declarava uma deriva de trinta pontos e comparava duas janelas estreitas. A
+queda agregada saiu em **três erros padrão** — inteiramente real, exatamente o que a aritmética prevê, e
+indistinguível de ruído na barra de quatro erros padrão que este repositório usa em todo lugar.
+
+A resposta errada é afrouxar a barra para um resultado. A resposta certa foi mais dados, e quando o horizonte
+maduro completo ainda não bastou, uma deriva declarada maior — enunciada em
+[`sql/00_parameters.sql`](sql/00_parameters.sql) e não aplicada em silêncio. Mas a medição vale mais que a
+correção: **uma mudança de mix grande o bastante para inverter o sinal de uma tendência reportada fica no
+limite do que alguns meses de dados conseguem resolver.** É por isso que, na prática, essa reversão é
+discutida em vez de demonstrada — e por isso que a decomposição, que é exata sem amostra alguma, é o que se
+põe na frente de uma revisão.
+
+Defeitos 20 e 21 em [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## O que fazer em vez disso
 
 - **Leia coortes, e diga a idade.** "38% dos leads que entraram em março fecharam em até 60 dias" é uma
@@ -1085,6 +1187,19 @@ razão indefinida que o DuckDB colocou em primeiro lugar porque ordena `nan` aci
 - **Suba um placebo de vez em quando.** Um sistema de medição que nunca produziu um resultado nulo não
   demonstrou ser capaz de produzir um.
 
+- **Padronize o mix antes de explicar o movimento.** Uma taxa de funil é uma média ponderada e os pesos são
+  uma série temporal que ninguém plota. Aqui toda origem melhorou e o total caiu três pontos e meio;
+  segurando a composição fixa, isso vira uma alta de quatro pontos. Os dois números estão corretos e
+  respondem perguntas diferentes.
+- **Decomponha, e use a forma que não deixa resto.** Ponderar cada mudança pela média dos dois períodos
+  torna a divisão exata. A versão de manual descarta o termo cruzado — um quinto do movimento aqui — e uma
+  sobra numa decomposição acaba batizada de "interação" e depois interpretada.
+- **Reporte a composição ao lado da taxa.** Se a participação da sua origem que mais converte caiu dezoito
+  pontos, esse é o achado, e nenhuma discussão sobre táticas de conversão vai chegar até ele.
+- **Espere não conseguir provar.** Uma mudança de mix grande o bastante para inverter uma tendência
+  reportada fica no limite do que um trimestre de dados resolve. A decomposição é exata sem amostra alguma; o
+  teste de significância sobre o agregado geralmente não é. Argumente pela primeira.
+
 ## Rodando
 
 ```bash
@@ -1120,6 +1235,8 @@ para subir: o repositório inteiro é arquivo SQL e um Makefile.
 | [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | As mesmas leituras tomadas nos dois logs, a forma fechada do passo três, e o que a contagem de linhas faz com o denominador. |
 | [`sql/e0_interventions.sql`](sql/e0_interventions.sql) | Seis mudanças subidas num único dia, e o mundo em que não foram — os mesmos sujeitos e as mesmas moedas, caminhados duas vezes. |
 | [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | O ganho causal, o ganho medido em seis horizontes, a leitura por janela antes-e-depois, e o ranking que uma revisão recebe. |
+| [`sql/f0_segments.sql`](sql/f0_segments.sql) | Três origens com participações e conversão derivando, atribuídas aos próprios sujeitos da onda 1. |
+| [`sql/f5_mix_readings.sql`](sql/f5_mix_readings.sql) | A leitura de dois períodos, a decomposição exata entre dentro e entre, a taxa padronizada, e a mesma reversão nos parâmetros declarados. |
 | [`tests/`](tests) | Dezessete arquivos de asserção. Cada um devolve as linhas que quebram uma afirmação; zero linhas é aprovação, e o harness confere também o código de saída. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | O que está construído, o que está deliberadamente ausente, o que segue aberto, e os defeitos. |
 
@@ -1145,7 +1262,7 @@ um período ocupado, então `sd/√n` subestima o intervalo em até 6,362 vezes.
 agrupado por período ocupado, que são independentes porque cada um começa com o sistema vazio — e o custo em
 poder de detecção é publicado em vez de escondido.
 
-**E defeitos são registrados em vez de corrigidos em silêncio.** Dezenove até aqui, em
+**E defeitos são registrados em vez de corrigidos em silêncio.** Vinte e um até aqui, em
 [`docs/ROADMAP.md`](docs/ROADMAP.md). O primeiro gerador passou no teste óbvio — a média ficou em 0,49999
 e a amplitude preencheu o intervalo — enquanto dois dos seus streams correlacionavam a **−0,42**. O
 segundo foi uma asserção minha simplesmente errada: afirmei uma identidade populacional sobre uma

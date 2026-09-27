@@ -53,6 +53,13 @@ improvement, system rollout or Kaizen result is described anywhere, and none of 
 intervention of any kind would achieve in any organisation. What the wave measures is not whether these
 changes work; it is what a reading of them reports, given that the generator already knows the answer.
 
+**The three origins of wave 11 are declared, and so is the drift.** Which origin a subject arrived through,
+how much better or worse each origin is at converting, and the way both the shares and the multipliers move
+across the horizon are parameters of `sql/00_parameters.sql`. No real acquisition channel, campaign,
+partnership, referral programme or customer mix was measured to produce them. The share drift is deliberately
+large, and the file says why: it is set so the reversal is resolvable at the error bar this repository uses,
+which is a declared design choice and not a measurement of how fast any real mix moves.
+
 **The column no real operation has is the point.** `declared_rate` is the eventual conversion rate the
 generator was built from — the answer key. A real funnel has no such column, which is exactly why a real
 funnel cannot tell which of its four readings is the rate. Every finding here exists because the
@@ -124,6 +131,14 @@ nada são todos parâmetros de `sql/00_parameters.sql`. Nenhum lançamento, expe
 implantação de sistema ou resultado de Kaizen real é descrito em lugar nenhum, e nenhuma destas cifras diz o que
 uma intervenção de qualquer tipo alcançaria em qualquer organização. O que a onda mede não é se estas mudanças
 funcionam; é o que uma leitura delas reporta, dado que o gerador já sabe a resposta.
+
+**As três origens da onda 11 são declaradas, e a deriva também.** Por qual origem cada sujeito chegou, o
+quanto cada origem é melhor ou pior em converter, e o modo como participações e multiplicadores se movem ao
+longo do horizonte são parâmetros de `sql/00_parameters.sql`. Nenhum canal de aquisição, campanha, parceria,
+programa de indicação ou mix de clientes real foi medido para produzi-los. A deriva de participação é
+deliberadamente grande, e o arquivo diz por quê: ela é ajustada para que a reversão seja resolvível na barra
+de erro que este repositório usa, o que é uma escolha de projeto declarada e não uma medição de quão rápido
+um mix real se move.
 
 **A coluna que nenhuma operação real tem é o ponto.** `declared_rate` é a taxa de conversão eventual a
 partir da qual o gerador foi construído — o gabarito. Um funil real não tem essa coluna, e é exatamente

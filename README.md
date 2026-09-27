@@ -13,7 +13,7 @@ opposite signs, and which one wins depends on whether demand is rising or fallin
 funnel takes. On one of the six it reads **1.98 times** the real conversion rate. On another it reads
 **0.92 times** it. Same engine, same behaviour, no bug.
 
-Everything here is **SQL**. Twenty-one model files, nineteen assertion files, a Makefile that decides the order, and
+Everything here is **SQL**. Twenty-three model files, twenty assertion files, a Makefile that decides the order, and
 no second language: an assertion is a query that returns the rows which break it, so zero rows is a
 pass and the harness needs no test framework. Every number in the documents below is re-derived by
 `tests/assert_published_figures.sql`, so a change that moves a published figure breaks the build
@@ -997,6 +997,109 @@ still wrong: the two real lifts are in the wrong order, and a change worth nothi
 Defects 18 and 19 in [`docs/ROADMAP.md`](docs/ROADMAP.md) — a standard error priced on the wrong scale, and
 an undefined ratio that DuckDB ranked first because it orders `nan` above every real number.
 
+## And the reading that moved because the population moved
+
+Every wave so far measures one population. There isn't one. Subjects arrive through origins that convert
+at different rates, and the share arriving through each origin moves — which makes every aggregate reading
+a weighted average whose weights are themselves a time series, and nothing in a funnel report says so.
+
+[`sql/f0_segments.sql`](sql/f0_segments.sql) gives each of wave 1's subjects one of three origins and walks
+it again. The arrival counts are untouched, so no earlier figure moves. What changes is that the second
+stage's pass rate is the declared rate times the origin's multiplier — and both the origin shares and the
+multipliers drift across the horizon.
+
+**Both periods are halves of the mature horizon.** Every cohort in them had the full maturity window to
+convert, so wave 1's prescription is already applied to every figure below. Whatever moves here is not the
+window. That is the point: this is a second mechanism, orthogonal to the first, and fixing the first does
+nothing whatsoever about it.
+
+### Every origin got better. The total got worse.
+
+| Origin | first half | second half | change |
+| --- | --- | --- | --- |
+| `direto` | 0.6430 | 0.7022 | **+0.0592** |
+| `parceiro` | 0.4551 | 0.4983 | **+0.0432** |
+| `campanha` | 0.2343 | 0.2515 | **+0.0172** |
+| **Aggregate** | **0.4890** | **0.4544** | **−0.0347** |
+
+Not one origin declined. The number on the dashboard fell by three and a half points, on 12388 and 20836
+subjects, and the fall is six standard errors wide.
+
+The reason is in the shares: `direto` fell from 0.4642 of arrivals to 0.2838 while `campanha` rose from
+0.2415 to 0.4126. The best origin shrank and the worst one grew, and the composition moved further than
+the rates did.
+
+This is not a sampling story at all. The same reversal is in the declared parameters, with the arrival
+weighting that wave 1's growth mechanism requires — **the composition of a period is the arrival-weighted
+average of its daily shares, not the share at its midpoint**, because the late days of a period carry more
+subjects than the early ones:
+
+| Declared | first half | second half |
+| --- | --- | --- |
+| `direto` multiplier | 0.9082 | **0.9252** |
+| `parceiro` multiplier | 0.6465 | **0.6595** |
+| `campanha` multiplier | 0.3272 | **0.3399** |
+| **Weighted average** | **0.692221** | **0.605715** |
+
+Three numbers up, their average down. That is arithmetic, not evidence.
+
+### The decomposition that has no remainder
+
+The change splits into what happened inside the origins and what happened to their weights. Written with
+the *mean* of the two periods' shares and rates —
+
+```
+Δ(Σ w·p) = Σ (w₀+w₁)/2 · (p₁−p₀)  +  Σ (p₀+p₁)/2 · (w₁−w₀)
+```
+
+— the two terms add to the change **exactly**. The algebra collapses to `Σw₁p₁ − Σw₀p₀` with nothing left
+over, which is why the assertion on it is at machine precision rather than within a tolerance.
+
+| Pooled | |
+| --- | --- |
+| Change in the aggregate | −0.034664 |
+| Inside the origins | **+0.040673** |
+| Between the origins (the mix) | **−0.075337** |
+| Residual | **0.0** |
+| Mix ÷ within | **1.8523** |
+
+The mix effect is **1.85 times** the within-origin effect and points the other way. And the familiar
+textbook split — rate change at the *starting* shares, share change at the *starting* rates — leaves the
+cross term `Σ Δw·Δp` unaccounted for: **−0.007324, a fifth of the whole movement.** A decomposition with a
+leftover gets the leftover named "interaction" and then interpreted.
+
+### One different set of weights
+
+Hold the composition at the first half's shares and read the second half's rates:
+
+| | reported | standardised |
+| --- | --- | --- |
+| Pooled | **−0.0347** | **+0.0443** |
+| `demanda` | **−0.0864** | **+0.0078** |
+
+Same subjects, same conversions, same definition of converted. The sign flips. And `demanda` is the
+starkest case in the table: standardised, it moved by less than a percentage point; as reported, it lost
+more than eight. **The entire movement was who arrived.**
+
+> **A funnel rate is a weighted average, and the weights are a time series nobody plots. Before explaining
+> why a rate moved, standardise the mix and see whether it moved at all.**
+
+### The finding I did not want
+
+The first version of this wave declared a thirty-point share drift and compared two narrow windows. The
+aggregate fall came out at **three standard errors** — entirely real, exactly what the arithmetic predicts,
+and not distinguishable from noise at the four-standard-error bar this repository uses everywhere else.
+
+The wrong response is to loosen the bar for one result. The right response was more data, and when the full
+mature horizon was still not enough, a larger declared drift — stated in
+[`sql/00_parameters.sql`](sql/00_parameters.sql) rather than quietly applied. But the measurement is worth
+more than the fix: **a mix shift large enough to reverse the sign of a reported trend sits at the edge of
+what a few months of data can resolve.** Which is why, in practice, this reversal is argued about rather
+than demonstrated — and why the decomposition, which needs no sample at all to be exact, is the thing to
+put in front of a review.
+
+Defects 20 and 21 in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## What to do instead
 
 - **Read cohorts, and say the age.** "38% of the leads that arrived in March had closed within 60 days"
@@ -1076,6 +1179,19 @@ an undefined ratio that DuckDB ranked first because it orders `nan` above every 
 - **Ship a placebo occasionally.** A measurement system that has never produced a null result has not been
   shown to be capable of producing one.
 
+- **Standardise the mix before explaining the move.** A funnel rate is a weighted average and the weights
+  are a time series nobody plots. Here every origin improved and the total fell by three and a half points;
+  holding the composition fixed turns that into a four-point rise. Both numbers are correct and they
+  describe different questions.
+- **Decompose, and use the form that has no remainder.** Weighting each change by the mean of the two
+  periods makes the split exact. The textbook version drops the cross term — a fifth of the movement here —
+  and a leftover in a decomposition gets named "interaction" and then interpreted.
+- **Report the composition next to the rate.** If the share of your best-converting origin fell eighteen
+  points, that is the finding, and no amount of discussion of conversion tactics will reach it.
+- **Expect not to be able to prove it.** A mix shift big enough to reverse a reported trend is at the edge
+  of what a quarter of data can resolve. The decomposition is exact with no sample at all; the significance
+  test on the aggregate usually is not. Argue from the first.
+
 ## Running it
 
 ```bash
@@ -1111,6 +1227,8 @@ service to start: the whole repository is SQL files and one Makefile.
 | [`sql/d5_movement_readings.sql`](sql/d5_movement_readings.sql) | The same readings taken on both logs, the step-three closed form, and what row-counting does to the denominator. |
 | [`sql/e0_interventions.sql`](sql/e0_interventions.sql) | Six changes shipped on one day, and the world where they were not — the same subjects and the same coins, walked twice. |
 | [`sql/e5_lift_readings.sql`](sql/e5_lift_readings.sql) | The causal lift, the lift measured at six horizons, the before-and-after window reading, and the ranking a review receives. |
+| [`sql/f0_segments.sql`](sql/f0_segments.sql) | Three origins with drifting shares and drifting conversion, assigned to wave 1's own subjects. |
+| [`sql/f5_mix_readings.sql`](sql/f5_mix_readings.sql) | The two-period reading, the exact decomposition into within and between, the standardised rate, and the same reversal in the declared parameters. |
 | [`tests/`](tests) | Seventeen assertion files. Each returns the rows that break a claim; zero rows is a pass, and the harness checks the exit status too. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | What is built, what is deliberately absent, what is still open, and the defects. |
 
@@ -1135,7 +1253,7 @@ binomial or of a sample mean. Wave 5 cannot: a queue's waits are correlated insi
 busy periods, which are independent because each one starts with an empty system — and the cost in power is
 published rather than hidden.
 
-**And defects are recorded rather than quietly fixed.** Nineteen so far, in
+**And defects are recorded rather than quietly fixed.** Twenty-one so far, in
 [`docs/ROADMAP.md`](docs/ROADMAP.md). The first generator passed the obvious test — the mean sat on
 0.49999 and the range filled the interval — while two of its streams correlated at **−0.42**. The
 second was an assertion of mine that was simply wrong: I asserted a population identity on a sample,

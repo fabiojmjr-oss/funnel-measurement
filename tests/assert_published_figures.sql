@@ -490,6 +490,42 @@ WITH expected(what, detail, value) AS (
     ('lift window',             'resgate',                   0.0294),
     ('lift window',             'demanda',                   0.1581),
     ('lift window',             'atendimento',              -0.0139),
+
+    -- Wave 11: the segment mix.
+    ('mix rate',   'direto inicio',       0.6430),
+    ('mix rate',   'parceiro inicio',     0.4551),
+    ('mix rate',   'campanha inicio',     0.2343),
+    ('mix rate',   'direto fim',          0.7022),
+    ('mix rate',   'parceiro fim',        0.4983),
+    ('mix rate',   'campanha fim',        0.2515),
+    ('mix share',  'direto inicio',       0.4642),
+    ('mix share',  'campanha inicio',     0.2415),
+    ('mix share',  'direto fim',          0.2838),
+    ('mix share',  'campanha fim',        0.4126),
+    ('mix aggregate', 'todos inicio',     0.4890),
+    ('mix aggregate', 'todos fim',        0.4544),
+    ('mix subjects',  'todos inicio',  12388.0),
+    ('mix subjects',  'todos fim',     20836.0),
+
+    ('mix change',  'todos',             -0.034664),
+    ('mix within',  'todos',              0.040673),
+    ('mix between', 'todos',             -0.075337),
+    ('mix cross',   'todos',             -0.007324),
+    ('mix residual','todos',              0.0),
+    ('mix change',  'demanda',           -0.086351),
+    ('mix within',  'demanda',            0.003994),
+
+    ('mix standardised', 'todos',         0.0443),
+    ('mix reported',     'todos',        -0.0347),
+    ('mix standardised', 'demanda',       0.0078),
+    ('mix reported',     'demanda',      -0.0864),
+
+    ('mix declared aggregate', 'inicio',  0.692221),
+    ('mix declared aggregate', 'fim',     0.605715),
+    ('mix declared share', 'direto inicio',   0.4634),
+    ('mix declared share', 'direto fim',      0.2904),
+    ('mix declared share', 'campanha inicio', 0.2366),
+    ('mix declared share', 'campanha fim',    0.4096),
 ),
 measured(what, detail, value) AS (
     SELECT 'subjects', 'all', count(*)::DOUBLE FROM subjects
@@ -898,6 +934,26 @@ measured(what, detail, value) AS (
     UNION ALL SELECT 'lift measured', funnel || ' ' || maturity, round(measured_lift, 4)
         FROM lift_by_maturity
     UNION ALL SELECT 'lift window', funnel, round(window_lift, 4) FROM lift_windows
+    UNION ALL SELECT 'mix rate', segment || ' ' || period, round(segment_rate, 4)
+        FROM mix_reading WHERE scope = 'todos'
+    UNION ALL SELECT 'mix share', segment || ' ' || period, round(segment_share, 4)
+        FROM mix_reading WHERE scope = 'todos'
+    UNION ALL SELECT 'mix aggregate', scope || ' ' || period, round(aggregate_rate, 4)
+        FROM mix_aggregate WHERE scope = 'todos'
+    UNION ALL SELECT 'mix subjects', scope || ' ' || period, subjects::DOUBLE
+        FROM mix_aggregate WHERE scope = 'todos'
+    UNION ALL SELECT 'mix change', scope, round(aggregate_change, 6) FROM mix_decomposition
+    UNION ALL SELECT 'mix within', scope, round(within_segments, 6) FROM mix_decomposition
+    UNION ALL SELECT 'mix between', scope, round(between_segments, 6) FROM mix_decomposition
+    UNION ALL SELECT 'mix cross', scope, round(cross_term, 6) FROM mix_decomposition
+    UNION ALL SELECT 'mix residual', scope,
+        round(within_segments + between_segments - aggregate_change, 6) FROM mix_decomposition
+    UNION ALL SELECT 'mix standardised', scope, round(standardised_change, 4) FROM mix_standardised
+    UNION ALL SELECT 'mix reported', scope, round(reported_change, 4) FROM mix_standardised
+    UNION ALL SELECT 'mix declared aggregate', period, round(max(declared_aggregate), 6)
+        FROM mix_declared GROUP BY period
+    UNION ALL SELECT 'mix declared share', segment || ' ' || period, round(declared_share, 4)
+        FROM mix_declared
 )
 SELECT 'a published figure moved' AS failure,
        e.what || ' / ' || e.detail AS detail,

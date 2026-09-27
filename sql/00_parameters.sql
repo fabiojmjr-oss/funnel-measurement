@@ -378,3 +378,53 @@ SELECT * FROM (VALUES
 -- and the curve across horizons can.
 CREATE OR REPLACE TABLE lift_horizons AS
 SELECT * FROM (VALUES (5), (10), (20), (30), (45), (60)) AS t(maturity);
+
+-- Wave 11: the segment mix, and the reading that moves because the population moved.
+--
+-- Every subject belongs to one of three origins. An origin carries a multiplier on the second stage's
+-- pass rate - so it is worse or better at converting than the declared funnel - and a share of arrivals
+-- that drifts linearly across the horizon. The drift is the mechanism: the shares of `direto` and
+-- `campanha` trade places while `parceiro` holds, so the population being measured at the end of the
+-- horizon is not the population being measured at the start.
+--
+-- The multipliers are all at or below one, so an effective pass rate is always a probability. And all
+-- three rise across the horizon, which is the point of the wave: every origin gets better at converting
+-- and the aggregate gets worse, because the origins are not equally represented and the drift is larger
+-- than the improvement.
+--
+--   day 0:   0.55*0.90 + 0.30*0.64 + 0.15*0.32 = 0.735
+--   day 180: 0.15*0.94 + 0.30*0.67 + 0.55*0.35 = 0.534
+--
+-- The shares of the two that move sum to 0.70 at every day, so the vector sums to one by construction
+-- rather than by rounding.
+--
+-- One choice here is worth stating plainly, because it is the kind of choice that is usually silent. The
+-- share drift is declared large - forty points of composition across the horizon - so that the reversal
+-- is resolvable at the four-standard-error bar this repository uses. The first version declared thirty
+-- points, and at that size the aggregate fall came out at three standard errors: entirely real, exactly
+-- as the arithmetic predicts, and not distinguishable from noise on this many subjects. That measurement
+-- is kept as a finding rather than deleted, because it is the more useful of the two. A mix shift big
+-- enough to reverse the sign of a reported trend sits at the edge of what a few months of data can
+-- resolve, which means the reversal is usually argued about rather than demonstrated.
+CREATE OR REPLACE TABLE segments AS
+SELECT * FROM (VALUES
+    ('direto',   1, 'Direct',   'Direto',   0.55, 0.15, 0.90, 0.94),
+    ('parceiro', 2, 'Partner',  'Parceiro', 0.30, 0.30, 0.64, 0.67),
+    ('campanha', 3, 'Campaign', 'Campanha', 0.15, 0.55, 0.32, 0.35)
+) AS t(segment, position, label_en, label_pt, share_at_zero, share_at_horizon,
+       multiplier_at_zero, multiplier_at_horizon);
+
+-- The two periods the mix reading compares: the mature horizon cut in half.
+--
+-- Both end at or before as_of minus the maturity window, so every cohort in them is fully mature and the
+-- censoring of wave 1 is already handled - whatever moves between these two periods is not the window.
+-- They are as wide as that constraint allows, and adjacent, because the first version used two narrow
+-- windows at the ends of the horizon and the aggregate fall came out at 3.3 standard errors: a real
+-- effect that the sample could not resolve at the four-standard-error bar this repository uses
+-- everywhere. Widening the periods uses more of the same data without touching the declared drift, which
+-- is the honest way to buy precision. Loosening the bar to fit the result would not be.
+CREATE OR REPLACE TABLE mix_periods_declared AS
+SELECT * FROM (VALUES
+    ('inicio', 1,   0,  74),
+    ('fim',    2,  75, 150)
+) AS t(period, position, first_day, last_day);

@@ -667,6 +667,76 @@ noiseless.
     so the filter cannot be removed quietly. **A guard that exists only as a `WHERE` clause in a model is not
     a guard; it is a habit.**
 
+## Wave 11 — the reading that moved because the population moved *(complete)*
+
+Waves 1 to 10 treat a funnel's subjects as one population. They are not: subjects arrive through origins
+that convert at different rates, and the share arriving through each origin moves, which makes every
+aggregate reading a weighted average whose weights are themselves a time series. `sql/f0_segments.sql`
+gives each of wave 1's subjects one of three origins - the arrival counts are untouched, so no earlier
+figure moves - and scales the second stage's pass rate by the origin's multiplier. Both the shares and the
+multipliers drift across the horizon.
+
+Both comparison periods are halves of the mature horizon, so every cohort in them had the full maturity
+window to convert. Wave 1's prescription is already applied to every figure in this wave, which is what
+makes the mix attributable: it is a second mechanism, orthogonal to the first, and fixing the first does
+nothing about it.
+
+**Result 1 - every origin improved and the aggregate fell.** `direto` went from 0.6430 to 0.7022,
+`parceiro` from 0.4551 to 0.4983, `campanha` from 0.2343 to 0.2515; not one declined. The aggregate went
+from 0.4890 to 0.4544, a fall six standard errors wide on 12388 and 20836 subjects. The shares are the
+reason: `direto` fell from 0.4642 of arrivals to 0.2838 while `campanha` rose from 0.2415 to 0.4126 - the
+best origin shrank and the worst grew, and the composition moved further than the rates did.
+
+**Result 2 - the reversal is in the declared parameters, not in the sample.** With the arrival weighting
+that wave 1's growth mechanism requires, the declared multipliers are 0.9082, 0.6465 and 0.3272 in the
+first period and 0.9252, 0.6595 and 0.3399 in the second, and their weighted average falls from 0.692221
+to 0.605715. Three numbers up, their average down, with no sampling anywhere in it. Worth noting for its
+own sake: the composition of a period is the arrival-weighted average of its daily shares and not the
+share at its midpoint, because arrivals grow - wave 1's mechanism reappearing inside the weights.
+
+**Result 3 - the decomposition is exact, and the familiar one is not.** Weighting each change by the mean
+of the two periods,
+
+    d(sum w*p) = sum (w0+w1)/2 * (p1-p0) + sum (p0+p1)/2 * (w1-w0)
+
+collapses algebraically to sum(w1*p1) - sum(w0*p0) with no remainder, so the assertion on it holds at
+machine precision rather than within a tolerance. Pooled, the change of -0.034664 splits into +0.040673
+inside the origins and -0.075337 between them: the mix is 1.85 times the within-origin effect and points
+the other way. The textbook split - rate change at the starting shares, share change at the starting rates
+- drops the cross term sum(dw*dp), which is -0.007324 here, a fifth of the whole movement. A decomposition
+with a leftover gets the leftover named "interaction" and then interpreted, which is why the exact form is
+the one published.
+
+**Result 4 - standardising the weights flips the sign.** Holding the composition at the first period's
+shares and reading the second period's rates turns the pooled -0.0347 into +0.0443. Same subjects, same
+conversions, same definition of converted. `demanda` is the starkest case: standardised it moved by
++0.0078 and as reported it lost -0.0864, so the entire movement was who arrived.
+
+### Defects found and recorded
+
+20. **An effect that was real, predicted exactly, and unresolvable.** The first version of this wave
+    declared a thirty-point share drift and compared two narrow windows at the ends of the horizon. The
+    aggregate fall came out at three standard errors - exactly what the arithmetic predicts, and not
+    distinguishable from noise at the four-standard-error bar used everywhere else here. The tempting
+    response is to loosen the bar for this one result, which would make every other figure in the
+    repository less trustworthy to buy one headline. The actual responses were to use the whole mature
+    horizon instead of two windows, and then, when that was still not enough, to declare a larger drift -
+    written into `sql/00_parameters.sql` with the reason, rather than quietly applied. **The measurement is
+    worth more than the fix, and it is kept as a finding: a mix shift large enough to reverse the sign of a
+    reported trend sits at the edge of what a few months of data can resolve.** Which is why this reversal
+    is argued about in practice rather than demonstrated, and why the decomposition - exact with no sample
+    at all - is the artefact to bring to a review.
+21. **An assertion placed where its mechanism is not measurable.** The first version measured conversion at
+    the *last* stage of each funnel, per funnel, and I was one step from asserting "every origin improved"
+    on it. The origin's multiplier acts on the second stage, so reading the last one puts the whole
+    funnel's attrition between the mechanism and the measurement: on `venda` the first period had 631
+    subjects and about ten conversions per origin, where a declared four percent gain is invisible, and the
+    swings that appeared - one origin reading 0.0315 against 0.0566 - were noise that happened to point the
+    right way. I caught it by reading the numbers before writing the assertion rather than after. The
+    reading moved to the second stage, where the mechanism acts, and the findings that depend on sampling
+    moved to the pooled scope, where the cells are large enough to carry them. **An assertion that passes
+    because the noise pointed the right way is worse than no assertion, because it will keep passing.**
+
 ## What is deliberately not here
 
 - **No second language.** The whole repository is SQL plus a Makefile. An assertion returning the rows
