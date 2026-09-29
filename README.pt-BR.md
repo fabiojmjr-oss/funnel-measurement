@@ -1,5 +1,7 @@
 # O funil que toda empresa desenha, e a aritmética que diz que ele não é uma taxa
 
+[![ci](https://github.com/fabiojmjr-oss/funnel-measurement/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiojmjr-oss/funnel-measurement/actions/workflows/ci.yml)
+
 *[English](README.md)*
 
 **Taxa de conversão de funil é quase sempre calculada dividindo dois números que pertencem a pessoas
@@ -33,6 +35,18 @@ modelo que o produz e a asserção que falha se ele deixar de ser verdade. Esse 
 
 [`docs/ROADMAP.md`](docs/ROADMAP.md) tem cada resultado onda por onda, o que está deliberadamente ausente,
 o que segue aberto, e os vinte e um defeitos registrados.
+
+Se o que você quer julgar é o método e não os achados, leia primeiro
+[**Como as afirmações são mantidas honestas**](#como-as-afirmações-são-mantidas-honestas): verificação
+contra uma derivação em vez de contra a própria saída do código, tolerâncias derivadas em vez de
+escolhidas, um gerador escrito em aritmética em vez de delegado a uma biblioteca, e erros padrão
+agrupados naquilo que de fato é independente.
+
+Nada aqui exige preparação além de um download: `make duckdb` baixa o CLI do DuckDB para `.bin`, e a
+partir daí `make check` constrói todos os modelos e roda os vinte e um arquivos de asserção em alguns
+minutos numa máquina comum. Não há mais nada a instalar — sem Python, sem notebook, sem serviço. Esse
+tempo é medição de relógio de um notebook e não uma cifra publicada como as demais; todo número nos
+documentos abaixo é re-derivado pelo build, e um tempo de execução é justamente o que não pode ser.
 
 ## Os seis funis
 

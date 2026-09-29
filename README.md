@@ -1,5 +1,7 @@
 # The funnel every company draws, and the arithmetic that says it is not a rate
 
+[![ci](https://github.com/fabiojmjr-oss/funnel-measurement/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiojmjr-oss/funnel-measurement/actions/workflows/ci.yml)
+
 *[Português](README.pt-BR.md)*
 
 **A funnel conversion rate is almost always computed by dividing two numbers that belong to different
@@ -32,6 +34,18 @@ produces it and the assertion that fails if it stops being true. That index is d
 
 [`docs/ROADMAP.md`](docs/ROADMAP.md) has every result wave by wave, what is deliberately absent, what is
 still open, and the twenty-one recorded defects.
+
+If what you want to judge is the method rather than the findings, read
+[**How the claims are kept honest**](#how-the-claims-are-kept-honest) first: verification against a
+derivation instead of against the code's own output, tolerances derived rather than chosen, a generator
+written in arithmetic instead of delegated to a library, and standard errors clustered on what is
+actually independent.
+
+Nothing here needs setting up beyond one download: `make duckdb` fetches the DuckDB CLI into `.bin`,
+and after that `make check` builds every model and runs all twenty-one assertion files in a couple of
+minutes on an ordinary machine. There is nothing else to install — no Python, no notebook, no service.
+That figure is a wall-clock measurement of one laptop and not a published figure like the rest; every
+number in the documents below is re-derived by the build, and a timing is the one thing that cannot be.
 
 ## The six funnels
 

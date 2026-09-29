@@ -261,6 +261,23 @@ WHERE regexp_matches(line, '^\s*--')
   AND regexp_matches(lower(line), '\b' || w.word || '\b')
 
 UNION ALL
+-- The build status badge and the route to the method.
+--
+-- Both are one line each and both are the kind of line that gets lost in an edit: a badge that silently
+-- disappears takes with it the only signal on the landing page that the assertions actually run, and the
+-- link to the method section is the only thing that routes a reader past a thousand lines of findings to
+-- the part that says why any of them should be believed.
+SELECT 'a README does not carry the build status badge', name
+FROM docs
+WHERE name LIKE 'README%' AND NOT contains(content, 'actions/workflows/ci.yml/badge.svg')
+
+UNION ALL
+SELECT 'a README does not route the reader to the method section', name
+FROM docs
+WHERE name LIKE 'README%' AND NOT contains(content, '](#how-the-claims-are-kept-honest)')
+  AND NOT contains(content, '](#como-as-afirmações-são-mantidas-honestas)')
+
+UNION ALL
 SELECT 'a placeholder token survived in ' || name, token
 FROM docs, (VALUES ('TODO'), ('FIXME'), ('XXX'), ('TKTK'), ('Lorem'), ('Placeholder')) AS t(token)
 WHERE contains(content, token);
